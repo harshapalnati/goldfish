@@ -1,0 +1,6 @@
+[env]
+# Some dependencies (e.g. Lance) require protoc well-known type includes.
+# We vendor a minimal subset under `protobuf_include/` to keep builds working on Windows
+# where protoc may not ship include files.
+PROTOC_INCLUDE = { value = "protobuf_include", relative = true }
+
