@@ -16,7 +16,7 @@ We take security seriously. If you discover a security vulnerability, please rep
 **DO NOT** create a public GitHub issue for security vulnerabilities.
 
 Instead, please email us at:
-- **security@goldfish.dev**
+- **harshapalnati@gmail.com**
 
 Please include:
 - Description of the vulnerability
@@ -272,8 +272,7 @@ Before deploying to production:
 
 ## Contact
 
-- Security Team: security@goldfish.dev
-- GPG Key: [Download](https://goldfish.dev/security.gpg)
+- Security Team: harshapalnati@gmail.com
 - Response Time: 48 hours
 
 ## Acknowledgments

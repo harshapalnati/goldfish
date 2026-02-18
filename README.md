@@ -1,62 +1,27 @@
 <div align="center">
 
-# 🐠 Goldfish
+![Goldfish Banner](assets/banner.png)
 
-**The Memory System AI Agents Deserve**
+# Goldfish Memory API
 
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
-[![Crates.io](https://img.shields.io/crates/v/goldfish.svg)](https://crates.io/crates/goldfish)
-[![Docs.rs](https://docs.rs/goldfish/badge.svg)](https://docs.rs/goldfish)
+### The Memory System AI Agents Deserve
+
+**🚀 API-First** • **🔌 Language Agnostic** • **⚡ Production Ready**
+
+[![API](https://img.shields.io/badge/API-REST-blue)](http://localhost:3000)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-green)](openapi.yaml)
+[![Python](https://img.shields.io/badge/Python-3.8+-blue)](examples/goldfish_client.py)
+[![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-yellow)](examples/js_client.js)
+[![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%2FMIT-blue.svg)](LICENSE)
-[![Build Status](https://github.com/harshapalnati/goldfish/workflows/CI/badge.svg)](https://github.com/harshapalnati/goldfish/actions)
 
-[Features](#features) • [Quick Start](#quick-start) • [Architecture](#architecture) • [API Docs](https://harshapalnati.github.io/goldfish/) • [Examples](#examples)
+[🚀 Quick Start](#quick-start) • [📖 API Docs](openapi.yaml) • [💻 SDKs](#sdks) • [🌟 Star History](#star-history)
 
 </div>
 
 ---
 
-Goldfish is a **production-grade memory cortex** for AI agents. It combines durable long-term storage with intelligent retrieval, context management, and episodic experiences—so your agents remember what matters, when it matters.
-
-Unlike simple key-value stores, Goldfish understands **semantics**, **relationships**, and **temporal context**. It doesn't just store memories; it helps agents *think* with them.
-
-## ✨ Features
-
-<table>
-<tr>
-<td valign="top" width="50%">
-
-### 🧠 **Intelligent Retrieval**
-- **Hybrid search**: BM25 + vector similarity + graph traversal
-- **Dynamic ranking**: Recency × importance × confidence × relationships
-- **Explanations**: Know *why* each memory was retrieved
-- **Tunable weights**: Adjust scoring for your use case
-
-### 💾 **Storage Backends**
-- ✅ **SQLite** (embedded, zero-config)
-- 🔜 **PostgreSQL** (production scale)
-- 🔜 **MongoDB** (document-heavy workloads)
-
-</td>
-<td valign="top" width="50%">
-
-### 🎯 **Agent-Focused Design**
-- **Working Memory**: Fast cache for active context
-- **Episodes**: Group memories into experiences
-- **Context Windows**: Build LLM-ready prompts
-- **Graph Relations**: Link memories semantically
-
-### ⚡ **Performance**
-- Sub-1ms retrieval latency
-- 10K+ memories per second throughput
-- Incremental indexing
-- Efficient memory consolidation
-
-</td>
-</tr>
-</table>
-
-## 🚀 Quick Start (5 Minutes)
+## 🚀 Quick Start (30 Seconds)
 
 ### 1. Start the Server
 
@@ -66,261 +31,285 @@ cd goldfish
 cargo run --example server --features dashboard
 ```
 
-Server starts on `http://localhost:3000` ✅
+✅ **Server running on http://localhost:3000**
 
-### 2. Store & Search Memories
+### 2. Make Your First API Call
 
 ```bash
 # Store a memory
 curl -X POST http://localhost:3000/v1/memory \
   -H "Content-Type: application/json" \
-  -d '{"content": "User prefers dark mode", "type": "preference", "importance": 0.9}'
+  -d '{
+    "content": "User prefers dark mode in all applications",
+    "type": "preference",
+    "importance": 0.9
+  }'
+```
 
-# Search
+**Response:**
+```json
+{
+  "id": "mem_abc123",
+  "content": "User prefers dark mode in all applications",
+  "type": "Preference",
+  "importance": 0.9,
+  "created_at": "2026-02-18T10:30:00Z"
+}
+```
+
+### 3. Search with Hybrid Ranking
+
+```bash
 curl -X POST http://localhost:3000/v1/search \
   -H "Content-Type: application/json" \
   -d '{"query": "user preferences", "limit": 5}'
-
-# Build LLM context
-curl -X POST http://localhost:3000/v1/context \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What does the user prefer?", "token_budget": 500}'
 ```
 
-### 3. Python Client
+**Response:**
+```json
+[
+  {
+    "id": "mem_abc123",
+    "content": "User prefers dark mode in all applications",
+    "type": "Preference",
+    "score": 0.95,
+    "why": "Matched query 'user preferences' with score 0.95"
+  }
+]
+```
+
+### 4. Build LLM Context
+
+```bash
+curl -X POST http://localhost:3000/v1/context \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What does the user prefer?",
+    "token_budget": 500
+  }'
+```
+
+**Response:**
+```json
+{
+  "context": "## Relevant Context\n1 [Preference] User prefers dark mode in all applications\n",
+  "tokens_used": 12,
+  "memories_included": 1,
+  "citations": [{"id": "mem_abc123", "content": "...", "type": "Preference"}]
+}
+```
+
+---
+
+## 💻 SDKs
+
+### Python
 
 ```python
-# pip install requests
-import requests
+from goldfish_client import GoldfishClient
 
-class GoldfishClient:
-    def __init__(self, url="http://localhost:3000"):
-        self.url = url
-    
-    def remember(self, content, type="fact", importance=None):
-        data = {"content": content, "type": type}
-        if importance:
-            data["importance"] = importance
-        return requests.post(f"{self.url}/v1/memory", json=data).json()
-    
-    def recall(self, query, limit=10):
-        return requests.post(f"{self.url}/v1/search", 
-                           json={"query": query, "limit": limit}).json()
-    
-    def context(self, query, token_budget=2000):
-        return requests.post(f"{self.url}/v1/context",
-                           json={"query": query, "token_budget": token_budget}).json()
-
-# Usage
 client = GoldfishClient()
-client.remember("User likes Python", "preference", importance=0.9)
-results = client.recall("python")
-ctx = client.context("What programming language?")
+
+# Store
+client.remember(
+    "User likes Python",
+    type="preference",
+    importance=0.9
+)
+
+# Search
+results = client.recall("programming", limit=5)
+
+# Build context
+ctx = client.context("What does user prefer?")
 print(ctx["context"])  # Ready for LLM prompt!
 ```
 
-**[📖 Full Quick Start Guide →](QUICKSTART.md)**
+**[📄 Full Python Client →](examples/goldfish_client.py)**
 
-### Agent-Facing API
+### JavaScript
+
+```javascript
+import GoldfishClient from './js_client.js';
+
+const client = new GoldfishClient();
+
+// Store
+await client.remember(
+  'User likes JavaScript',
+  'preference',
+  0.9
+);
+
+// Search
+const results = await client.recall('programming');
+
+// Context
+const ctx = await client.context('What does user prefer?');
+console.log(ctx.context); // Ready for LLM!
+```
+
+**[📄 Full JavaScript Client →](examples/js_client.js)**
+
+### Rust
 
 ```rust
-use goldfish::{MemoryCortex, ContextWindow, MemoryType};
+use goldfish::{MemoryCortex, Memory, MemoryType};
 
-let cortex = MemoryCortex::new("./agent_data").await?;
+let cortex = MemoryCortex::new("./data").await?;
 
-// Start an episodic experience
-cortex.start_episode("User Onboarding", "First-time setup").await?;
+// Store
+cortex.remember(&Memory::new(
+    "User likes Rust",
+    MemoryType::Preference
+)).await?;
 
-// Store with semantic typing
-cortex.prefer("Dark mode preferred", 0.9).await?;
-cortex.goal("Complete setup by Friday").await?;
+// Search
+let results = cortex.recall("programming", 5).await?;
 
-// Build LLM context automatically
-let context = cortex.build_context(&ContextWindow::new(2000)).await?;
-println!("{}", context);  // Ready for LLM prompt
-
-cortex.end_episode().await?;
+// Context
+let context = cortex.get_full_context(10).await?;
 ```
+
+---
+
+## 📖 API Reference
+
+**[📘 OpenAPI Specification →](openapi.yaml)**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/v1/memory` | Store a memory |
+| `GET` | `/v1/memory/:id` | Get memory by ID |
+| `POST` | `/v1/search` | Hybrid search (BM25 + Vector + Importance + Recency) |
+| `POST` | `/v1/context` | Build LLM context with citations |
+| `POST` | `/v1/episodes/start` | Start episodic experience |
+| `POST` | `/v1/episodes/:id/end` | End episode |
+| `GET` | `/health` | Health check |
+
+---
+
+## ✨ Why API-First?
+
+| Feature | Benefit |
+|---------|---------|
+| **🌐 Language Agnostic** | Use Python, JavaScript, Rust, Go, or any language |
+| **🔧 Framework Independent** | Works with LangChain, LlamaIndex, CrewAI, or custom agents |
+| **⚡ Zero Dependencies** | Just HTTP calls - no heavy SDKs needed |
+| **🔒 Secure by Default** | Run locally or deploy to your infrastructure |
+| **📈 Scales With You** | SQLite locally → PostgreSQL in production |
+
+---
+
+## 🧠 Features
+
+### Hybrid Search
+```
+Score = BM25×0.35 + Vector×0.35 + Recency×0.20 + Importance×0.10
+```
+
+- **BM25**: Full-text search
+- **Vector**: Semantic similarity (cosine)
+- **Recency**: Time decay boost
+- **Importance**: Type-based scoring
+
+### Working Memory
+- Fast LRU cache (20 items default)
+- Pin critical memories
+- Automatic attention scoring
+
+### Episodic Memory
+- Group memories into experiences
+- Start/end episode API
+- Temporal context tracking
+
+### Context Builder
+- Token-budgeted generation
+- Citations with memory IDs
+- Explainability ("why included")
+
+---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│               Application Layer              │
-├─────────────────────────────────────────────┤
-│  MemoryCortex  │  MemorySystem  │   CLI     │
-├─────────────────────────────────────────────┤
-│  Working Mem   │    Episodes    │  Context  │
-├─────────────────────────────────────────────┤
-│      Hybrid Retrieval Engine               │
-│  ┌────────┬──────────┬──────────┐         │
-│  │  BM25  │  Vector  │  Graph   │         │
-│  └────────┴──────────┴──────────┘         │
-├─────────────────────────────────────────────┤
-│  StorageBackends    │   VectorBackends     │
-│  ┌────────────────┐ │  ┌──────────────┐   │
-│  │ SQLite ✓       │ │  │ LanceDB ✓    │   │
-│  │ PostgreSQL 🔜  │ │  │ pgvector 🔜  │   │
-│  │ MongoDB 🔜     │ │  │ Qdrant 🔜    │   │
-│  └────────────────┘ │  └──────────────┘   │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│           Your Agent                │
+│    (Python/JS/Rust/Go/Any)         │
+└─────────────┬───────────────────────┘
+              │ HTTP/JSON
+┌─────────────▼───────────────────────┐
+│      Goldfish Memory API            │
+│  ┌──────────┬──────────┐           │
+│  │  BM25    │  Vector  │  Hybrid   │
+│  │ (Tantivy)│ (Cosine) │  Search   │
+│  └──────────┴──────────┘           │
+│  ┌─────────────────────────────┐   │
+│  │  Working Memory (LRU)       │   │
+│  │  Episodes                   │   │
+│  │  Context Builder            │   │
+│  └─────────────────────────────┘   │
+└──────────────────┬──────────────────┘
+                   │
+┌──────────────────▼──────────────────┐
+│        Storage Backend              │
+│  ┌─────────────────────────────┐   │
+│  │  SQLite (default)           │   │
+│  │  PostgreSQL (production)    │   │
+│  └─────────────────────────────┘   │
+└─────────────────────────────────────┘
 ```
 
-### Hybrid Scoring Formula
+---
 
-```
-final_score = 
-    bm25_score × 0.35 +
-    vector_score × 0.35 +
-    recency_boost × 0.20 +
-    importance × 0.10 +
-    graph_bonus (max 0.15)
-```
+## 🚀 Installation
 
-## 📊 Benchmarks
-
-Run the evaluation harness to measure retrieval quality:
-
-```rust
-use goldfish::{EvalHarness, HybridSearchConfig};
-
-let harness = EvalHarness::new(backend);
-let results = harness.compare_baselines().await?;
-
-// Results:
-// • No memory baseline: 0% precision
-// • BM25 only: 68% precision, 0.18ms latency
-// • Hybrid (Goldfish): 94% precision, 0.21ms latency
-```
-
-## 🔧 Configuration
-
-### Storage Backend
-
-```rust
-// SQLite (default)
-let memory = MemorySystem::new("./data").await?;
-
-// With custom pool
-let memory = MemorySystem::with_pool(pool).await?;
-```
-
-### Hybrid Search
-
-```rust
-use goldfish::HybridSearchConfig;
-
-let config = HybridSearchConfig {
-    weight_bm25: 0.35,
-    weight_vector: 0.35,
-    weight_recency: 0.20,
-    weight_importance: 0.10,
-    weight_graph: 0.15,
-    max_results: 10,
-    neighbor_depth: 1,
-};
-```
-
-### Memory Types
-
-- **`Fact`** - General knowledge
-- **`Preference`** - User preferences (high importance)
-- **`Goal`** - Objectives to achieve
-- **`Decision`** - Choices made with context
-- **`Experience`** - Learned from interactions
-- **`Identity`** - Core agent/user characteristics
-
-## 📚 Examples
-
-### Working with Episodes
-
-```rust
-// Group related memories into experiences
-cortex.start_episode("Debugging Session", "Fixing production bug").await?;
-
-cortex.remember(&Memory::new("Found race condition in user service", MemoryType::Fact)).await?;
-cortex.remember(&Memory::new("Applied mutex fix", MemoryType::Decision)).await?;
-
-let episode = cortex.end_episode().await?;
-// Episode contains all memories + metadata
-```
-
-### Graph Relationships
-
-```rust
-// Link memories semantically
-let goal = cortex.goal("Learn Rust").await?;
-let resource = cortex.remember(&Memory::new("Rust Book chapter 1", MemoryType::Fact)).await?;
-
-cortex.link(&goal.id, &resource.id, RelationType::RelatesTo).await?;
-
-// Find related memories
-let related = cortex.get_neighbors(&goal.id, depth=2).await?;
-```
-
-### Event-Driven Architecture
-
-```rust
-use goldfish::Pulse;
-
-let mut rx = memory.pulses().subscribe();
-tokio::spawn(async move {
-    while let Ok(pulse) = rx.recv().await {
-        match pulse {
-            Pulse::NewMemory { memory, .. } => {
-                println!("📝 New memory: {}", memory.content);
-            }
-            Pulse::AssociationCreated { source, target, .. } => {
-                println!("🔗 Linked: {} → {}", source, target);
-            }
-            _ => {}
-        }
-    }
-});
-```
-
-## 🛠️ Development
-
+### Docker (Coming Soon)
 ```bash
-# Clone repository
+docker run -p 3000:3000 goldfish/memory:latest
+```
+
+### From Source
+```bash
 git clone https://github.com/harshapalnati/goldfish.git
 cd goldfish
-
-# Run tests
-cargo test
-
-# Run comprehensive example
-cargo run --example comprehensive
-
-# Build documentation
-cargo doc --open
+cargo build --release
+./target/release/goldfish-server
 ```
+
+---
+
+## 🌟 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=harshapalnati/goldfish&type=Date)](https://star-history.com/#harshapalnati/goldfish&Date)
+
+---
+
+## 📊 Comparison
+
+| Feature | Spacebot | Goldfish |
+|---------|----------|----------|
+| **API** | ❌ No | ✅ REST API |
+| **Hybrid Search** | ❌ Text only | ✅ BM25 + Vector |
+| **Working Memory** | ❌ No | ✅ LRU Cache |
+| **Episodes** | ❌ No | ✅ Grouped experiences |
+| **Context Builder** | ❌ Manual | ✅ Automatic with citations |
+| **Multi-language** | ❌ No | ✅ Any language via HTTP |
+| **Explainability** | ❌ No | ✅ "Why retrieved" |
+
+---
 
 ## 🤝 Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-Areas we'd love help with:
-- PostgreSQL storage backend
-- pgvector integration
-- Python bindings
-- Dashboard UI
-- Additional examples
+**Contact:** harshapalnati@gmail.com
+
+---
 
 ## 📄 License
 
-Dual-licensed under:
-
-- **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE))
-- **MIT License** ([LICENSE-MIT](LICENSE-MIT))
-
-Choose whichever license works best for your project.
-
-## 🙏 Acknowledgments
-
-- Built with [Tantivy](https://github.com/quickwit-oss/tantivy) for full-text search
-- Inspired by human memory research (episodic, semantic, working memory)
-- Designed for [OpenClaw](https://github.com/harshapalnati/openclaw) and similar agent frameworks
+Dual-licensed under [Apache 2.0](LICENSE-APACHE) and [MIT](LICENSE-MIT).
 
 ---
 
@@ -328,6 +317,6 @@ Choose whichever license works best for your project.
 
 **Made with 🐠 by [Harsha Palnati](https://github.com/harshapalnati)**
 
-⭐ Star us on GitHub if Goldfish helps your agents remember!
+⭐ Star us if Goldfish helps your agents remember!
 
 </div>
