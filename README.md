@@ -1,6 +1,6 @@
 <div align="center">
 
-![Goldfish Banner](https://raw.githubusercontent.com/harshapalnati/goldfish/main/assets/banner.png)
+![Goldfish Banner](https://raw.githubusercontent.com/harshapalnati/goldfish/main/assets/banner.svg)
 
 # Goldfish
 
