@@ -2,26 +2,30 @@
 
 ![Goldfish Banner](https://raw.githubusercontent.com/harshapalnati/goldfish/main/assets/banner.png)
 
-# Goldfish
+# GOLDFISH
 
-### Give Your AI Agent a Memory
+## Give Your AI Agent a Memory
 
-**🧠 Smart Recall** • **🔍 Hybrid Search** • **🎯 Context Aware**
+**REMEMBER! RECALL! RETRIEVE!**
 
+[![BUILD](https://img.shields.io/badge/BUILD-passing-brightgreen)](https://github.com/harshapalnati/goldfish/actions)
+[![RELEASE](https://img.shields.io/badge/RELEASE-v0.1.0-blue)](https://github.com/harshapalnati/goldfish/releases)
 [![API](https://img.shields.io/badge/API-REST-blue)](http://localhost:3000)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-green)](openapi.yaml)
 [![Python](https://img.shields.io/badge/Python-3.8+-blue)](examples/goldfish_client.py)
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-yellow)](examples/js_client.js)
 [![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
-[![License](https://img.shields.io/badge/license-Apache%2FMIT-blue.svg)](LICENSE)
+[![LICENSE](https://img.shields.io/badge/LICENSE-MIT%2FApache-blue.svg)](LICENSE)
 
-[🚀 Quick Start](#quick-start) • [📖 API Docs](openapi.yaml) • [💻 Examples](#quick-integration) • [🌟 Star History](#star-history)
+**Smart Recall** • **Hybrid Search** • **Context Aware**
+
+[Quick Start](#quick-start) • [API Docs](openapi.yaml) • [Examples](#quick-integration) • [Star History](#star-history)
 
 </div>
 
 ---
 
-## 🚀 Quick Start (30 Seconds)
+## Quick Start (30 Seconds)
 
 ### 1. Start the Server
 
@@ -31,7 +35,7 @@ cd goldfish
 cargo run --example server --features dashboard
 ```
 
-✅ **Server running on http://localhost:3000**
+**Server running on http://localhost:3000**
 
 ### 2. Make Your First API Call
 
@@ -101,7 +105,7 @@ curl -X POST http://localhost:3000/v1/context \
 
 ---
 
-## 💻 Quick Integration
+## Quick Integration
 
 ### Python
 
@@ -161,9 +165,9 @@ let context = cortex.get_full_context(10).await?;
 
 ---
 
-## 📖 API Reference
+## API Reference
 
-**[📘 OpenAPI Specification →](openapi.yaml)**
+**[OpenAPI Specification →](openapi.yaml)**
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -177,19 +181,19 @@ let context = cortex.get_full_context(10).await?;
 
 ---
 
-## ✨ Why Goldfish?
+## Why Goldfish?
 
 | Feature | Benefit |
 |---------|---------|
-| **🌐 Works Everywhere** | Python, JavaScript, Rust, Go, or any language |
-| **🔧 Framework Agnostic** | LangChain, LlamaIndex, CrewAI, or custom agents |
-| **⚡ Zero Lock-in** | Simple HTTP calls, no heavy dependencies |
-| **🔒 Secure** | Run locally or deploy to your infrastructure |
-| **📈 Production Ready** | SQLite locally → PostgreSQL in production |
+| **Works Everywhere** | Python, JavaScript, Rust, Go, or any language |
+| **Framework Agnostic** | LangChain, LlamaIndex, CrewAI, or custom agents |
+| **Zero Lock-in** | Simple HTTP calls, no heavy dependencies |
+| **Secure** | Run locally or deploy to your infrastructure |
+| **Production Ready** | SQLite locally → PostgreSQL in production |
 
 ---
 
-## 🧠 Features
+## Features
 
 ### Hybrid Search
 ```
@@ -218,7 +222,7 @@ Score = BM25×0.35 + Vector×0.35 + Recency×0.20 + Importance×0.10
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────┐
@@ -250,7 +254,7 @@ Score = BM25×0.35 + Vector×0.35 + Recency×0.20 + Importance×0.10
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Docker (Coming Soon)
 ```bash
@@ -267,13 +271,13 @@ cargo build --release
 
 ---
 
-## 🌟 Star History
+## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=harshapalnati/goldfish&type=Date)](https://star-history.com/#harshapalnati/goldfish&Date)
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
@@ -281,7 +285,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ---
 
-## 📄 License
+## License
 
 Dual-licensed under [Apache 2.0](LICENSE-APACHE) and [MIT](LICENSE-MIT).
 
@@ -289,8 +293,7 @@ Dual-licensed under [Apache 2.0](LICENSE-APACHE) and [MIT](LICENSE-MIT).
 
 <div align="center">
 
-**Made with 🐠 by [Harsha Palnati](https://github.com/harshapalnati)**
 
-⭐ Star us if Goldfish helps your agents remember!
+Star us if Goldfish helps your agents remember!
 
 </div>
