@@ -15,6 +15,7 @@ pub mod cortex;
 pub mod embedding;
 pub mod storage_backend;
 pub mod vector_backend;
+pub mod vector_search;
 pub mod hybrid_retrieval;
 pub mod eval_harness;
 
@@ -58,6 +59,7 @@ pub use cortex::{
 pub use embedding::{EmbeddingProvider, HashEmbeddingProvider};
 pub use storage_backend::StorageBackend;
 pub use vector_backend::{VectorBackend, VectorSearchHit};
+pub use vector_search::{VectorIndex, VectorSearchConfig, generate_embedding};
 pub use hybrid_retrieval::{HybridSearchConfig, ExplainedSearchResult, RetrievalExplanation};
 pub use eval_harness::{EvalHarness, BenchmarkResults, RetrievalTestCase, run_standard_eval, print_results};
 

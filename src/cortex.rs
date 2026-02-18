@@ -8,7 +8,8 @@
 //! - Memory Summaries: Consolidation of old memories
 
 use crate::error::{MemoryError, Result};
-use crate::types::{Memory, MemoryId, MemoryType, RelationType, Association, MemorySearchResult};
+use crate::types::{Association, Memory, MemoryId, MemoryType, RelationType, MemorySearchResult};
+use crate::vector_search::{VectorIndex, VectorSearchConfig, generate_embedding};
 use crate::MemoryStore;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
@@ -535,6 +536,7 @@ pub struct MemoryCortex {
     working_memory: RwLock<WorkingMemory>,
     current_experience: RwLock<Option<Experience>>,
     data_dir: std::path::PathBuf,
+    vector_index: Option<Arc<VectorIndex>>,
 }
 
 impl MemoryCortex {
@@ -558,11 +560,20 @@ impl MemoryCortex {
 
         let store = MemoryStore::new(pool);
 
+        // Initialize vector index
+        let vector_config = VectorSearchConfig {
+            dimension: 384,
+            index_path: data_dir.join("vectors"),
+        };
+        let vector_index = Arc::new(VectorIndex::new(vector_config));
+        vector_index.init().await?;
+
         Ok(Self {
             store,
             working_memory: RwLock::new(WorkingMemory::new(20)),
             current_experience: RwLock::new(None),
             data_dir,
+            vector_index: Some(vector_index),
         })
     }
 
@@ -575,6 +586,12 @@ impl MemoryCortex {
     /// Remember something - adds to working memory and optionally to current episode
     pub async fn remember(&self, memory: &Memory) -> Result<()> {
         self.store.save(memory).await?;
+
+        // Store vector embedding for semantic search
+        if let Some(ref vector_index) = self.vector_index {
+            let embedding = generate_embedding(&memory.content);
+            vector_index.store(&memory.id, embedding).await?;
+        }
 
         // Add to working memory
         let mut wm = self.working_memory.write().await;
@@ -651,7 +668,7 @@ impl MemoryCortex {
 
     // ─── Search & Recall ──────────────────────────────────────────────────
 
-    /// Search memories with importance ranking
+    /// Search memories with hybrid ranking (text + vector + importance + recency)
     pub async fn recall(&self, query: &str, limit: usize) -> Result<Vec<MemorySearchResult>> {
         // Load all memory types for search
         let mut all_memories = Vec::new();
@@ -661,24 +678,58 @@ impl MemoryCortex {
         }
 
         let query_lower = query.to_lowercase();
-        let mut results = Vec::new();
+        let query_embedding = generate_embedding(query);
+        let mut scored_memories: HashMap<String, (Memory, f32)> = HashMap::new();
 
-        for memory in all_memories {
+        // 1. Text search (BM25-style)
+        for memory in &all_memories {
             if memory.forgotten {
                 continue;
             }
             let content_lower = memory.content.to_lowercase();
-            if content_lower.contains(&query_lower) {
-                let score = ImportanceCalculator::calculate_with_query(&memory, query);
-                results.push(MemorySearchResult {
-                    memory,
-                    score,
-                    rank: results.len() + 1,
-                });
+            let text_score = if content_lower.contains(&query_lower) {
+                1.0
+            } else {
+                // Check word overlap
+                let query_words: std::collections::HashSet<_> = query_lower.split_whitespace().collect();
+                let content_words: std::collections::HashSet<_> = content_lower.split_whitespace().collect();
+                let overlap = query_words.intersection(&content_words).count() as f32;
+                overlap / query_words.len().max(1) as f32
+            };
+            
+            if text_score > 0.0 {
+                let importance = ImportanceCalculator::calculate_with_query(memory, query);
+                let combined_score = text_score * 0.5 + importance * 0.5;
+                scored_memories.insert(memory.id.clone(), (memory.clone(), combined_score));
             }
         }
 
-        // Sort by importance score
+        // 2. Vector search (if available)
+        if let Some(ref vector_index) = self.vector_index {
+            let vector_results = vector_index.search(&query_embedding, limit * 2).await?;
+            for (memory_id, similarity) in vector_results {
+                if let Some(memory) = all_memories.iter().find(|m| m.id == memory_id) {
+                    if memory.forgotten {
+                        continue;
+                    }
+                    let entry = scored_memories.entry(memory_id).or_insert((memory.clone(), 0.0));
+                    // Combine scores: 50% text, 50% vector
+                    entry.1 = entry.1 * 0.5 + similarity * 0.5;
+                }
+            }
+        }
+
+        // 3. Convert to results and sort
+        let mut results: Vec<MemorySearchResult> = scored_memories
+            .into_values()
+            .map(|(memory, score)| MemorySearchResult {
+                memory,
+                score,
+                rank: 0, // Will be set after sorting
+            })
+            .collect();
+
+        // Sort by combined score
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
         results.truncate(limit);
 
