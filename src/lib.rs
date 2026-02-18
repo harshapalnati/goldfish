@@ -1,0 +1,255 @@
+//! # Goldfish - Agentic Memory Cortex for AI Agents
+
+pub mod error;
+pub mod types;
+pub mod store;
+pub mod search;
+pub mod maintenance;
+pub mod confidence;
+pub mod temporal;
+pub mod pulses;
+pub mod synthesis;
+pub mod versioning;
+pub mod cache;
+pub mod cortex;
+
+pub use error::{MemoryError, Result};
+pub use types::{
+    Association, CreateAssociationInput, CreateMemoryInput, Memory, MemoryId, MemorySearchResult,
+    MemoryType, RelationType, SessionId,
+};
+pub use store::{MemoryStore, SortOrder};
+pub use search::{MemorySearch, SearchConfig, SearchMode, SearchSort};
+pub use maintenance::{MaintenanceConfig, MaintenanceReport, run_maintenance, MaintenanceConfigBuilder};
+pub use confidence::{
+    MemoryConfidence, ConfidenceFactors, SourceReliability,
+    VerificationStatus, ConfidenceTier, ConfidenceConfig
+};
+pub use temporal::{
+    TemporalQuery, TemporalMode, TemporalPreset,
+    Episode, TemporalConfig, TemporalSearchResult
+};
+pub use pulses::{
+    Pulse, PulseFilter, PulseType, ChangeType,
+    GoldfishPulses, PulseConfig, PulseStats, pulse
+};
+pub use synthesis::{
+    SynthesisEngine, SynthesisConfig, Insight, InsightType
+};
+pub use versioning::{
+    VersionId, MemoryVersion, VersionAuthor, VersioningConfig, VersioningConfigBuilder,
+    MemoryDiff, FieldChange, FieldChangeKind, ChangeType as VersionChangeType, StorageMode,
+    MemoryBranch, VersionConflict, ConflictResolution, VersioningStats,
+    VersioningEngine, VersionRepository
+};
+pub use cache::{
+    CacheKey, CacheStats, CacheConfig, CacheConfigBuilder,
+    CacheManager, L1Cache, CachedMemoryOperations,
+};
+pub use cortex::{
+    MemoryCortex, WorkingMemory, WorkingMemoryItem, Experience,
+    ImportanceCalculator, ImportanceWeights, ContextWindow, MemorySummary,
+};
+
+use sqlx::sqlite::SqliteConnectOptions;
+use sqlx::SqlitePool;
+use std::path::Path;
+use std::sync::Arc;
+
+/// Main memory system - SQLite only for simplicity
+#[derive(Clone)]
+pub struct MemorySystem {
+    store: Arc<MemoryStore>,
+    search: MemorySearch,
+    data_dir: std::path::PathBuf,
+    pulses: Arc<GoldfishPulses>,
+}
+
+impl std::fmt::Debug for MemorySystem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemorySystem")
+            .field("data_dir", &self.data_dir)
+            .finish()
+    }
+}
+
+impl MemorySystem {
+    /// Create a new memory system (SQLite only)
+    pub async fn new(data_dir: impl AsRef<Path>) -> Result<Self> {
+        let data_dir = data_dir.as_ref().to_path_buf();
+        std::fs::create_dir_all(&data_dir)?;
+
+        let sqlite_path = data_dir.join("memories.db");
+        let options = SqliteConnectOptions::new()
+            .filename(&sqlite_path)
+            .create_if_missing(true);
+
+        let pool = SqlitePool::connect_with(options).await?;
+
+        // Run migrations
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .map_err(|e| MemoryError::Database(e.into()))?;
+
+        let store = MemoryStore::new(pool);
+        let search = MemorySearch::with_dir(Arc::clone(&store), &data_dir)?;
+        search.reindex_all().await?;
+        let pulses = Arc::new(GoldfishPulses::default());
+
+        Ok(Self {
+            store,
+            search,
+            data_dir,
+            pulses,
+        })
+    }
+
+    /// Save a memory
+    pub async fn save(&self, memory: &Memory) -> Result<()> {
+        self.store.save(memory).await?;
+        self.search.index_memory(memory)?;
+        Ok(())
+    }
+
+    /// Load a memory by ID
+    pub async fn load(&self, id: &str) -> Result<Option<Memory>> {
+        self.store.load(id).await
+    }
+
+    /// Update a memory
+    pub async fn update(&self, memory: &Memory) -> Result<()> {
+        self.store.update(memory).await?;
+        self.search.index_memory(memory)?;
+        Ok(())
+    }
+
+    /// Delete a memory
+    pub async fn delete(&self, id: &str) -> Result<()> {
+        self.store.delete(id).await?;
+        self.search.delete_memory(id)?;
+        Ok(())
+    }
+
+    /// Soft delete (forget) a memory
+    pub async fn forget(&self, id: &str) -> Result<bool> {
+        self.store.forget(id).await
+    }
+
+    /// Restore a forgotten memory
+    pub async fn restore(&self, id: &str) -> Result<bool> {
+        self.store.restore(id).await
+    }
+
+    /// Search memories (simple text match for now)
+    pub async fn search(&self, query: &str) -> Result<Vec<MemorySearchResult>> {
+        self.search.search(query, &SearchConfig::default()).await
+    }
+
+    /// Search with custom configuration
+    pub async fn search_with_config(
+        &self,
+        query: &str,
+        config: &SearchConfig,
+    ) -> Result<Vec<MemorySearchResult>> {
+        self.search.search(query, config).await
+    }
+
+    /// Get memories by type
+    pub async fn get_by_type(&self, memory_type: MemoryType, limit: i64) -> Result<Vec<Memory>> {
+        self.store.get_by_type(memory_type, limit).await
+    }
+
+    /// Get high-importance memories
+    pub async fn get_high_importance(&self, threshold: f32, limit: i64) -> Result<Vec<Memory>> {
+        self.store.get_high_importance(threshold, limit).await
+    }
+
+    /// Create an association between memories
+    pub async fn associate(
+        &self,
+        source_id: &str,
+        target_id: &str,
+        relation_type: RelationType,
+    ) -> Result<()> {
+        let association = Association::new(source_id, target_id, relation_type);
+        self.store.create_association(&association).await
+    }
+
+    /// Get associations for a memory
+    pub async fn get_associations(&self, memory_id: &str) -> Result<Vec<Association>> {
+        self.store.get_associations(memory_id).await
+    }
+
+    /// Get memory neighbors in the graph
+    pub async fn get_neighbors(
+        &self,
+        memory_id: &str,
+        depth: u32,
+    ) -> Result<(Vec<Memory>, Vec<Association>)> {
+        self.store.get_neighbors(memory_id, depth, &[]).await
+    }
+
+    /// Run maintenance tasks
+    pub async fn run_maintenance(&self, config: &MaintenanceConfig) -> Result<MaintenanceReport> {
+        maintenance::run_maintenance(&self.store, config).await
+    }
+
+    /// Get the underlying store
+    pub fn store(&self) -> &MemoryStore {
+        &self.store
+    }
+
+    /// Get the search interface
+    pub fn search_interface(&self) -> &MemorySearch {
+        &self.search
+    }
+
+    /// Get the pulses system for subscribing to events
+    pub fn pulses(&self) -> &GoldfishPulses {
+        &self.pulses
+    }
+
+    /// Search memories by time range
+    pub async fn search_temporal(
+        &self,
+        _query: &str,
+        temporal: &temporal::TemporalQuery,
+    ) -> Result<Vec<MemorySearchResult>> {
+        let time_filter = temporal.to_sql_filter();
+        let memories = self.store.query_with_filter(&time_filter, 1000).await?;
+
+        let results: Vec<MemorySearchResult> = memories
+            .into_iter()
+            .enumerate()
+            .map(|(i, memory)| MemorySearchResult {
+                memory,
+                score: 1.0 - (i as f32 / 100.0),
+                rank: i + 1,
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Get memories from today
+    pub async fn get_today(&self) -> Result<Vec<Memory>> {
+        let today = chrono::Utc::now().date_naive();
+        let filter = format!("date(created_at) = '{}'", today);
+        self.store.query_with_filter(&filter, 100).await
+    }
+
+    /// Get memories from yesterday
+    pub async fn get_yesterday(&self) -> Result<Vec<Memory>> {
+        let yesterday = (chrono::Utc::now() - chrono::Duration::days(1)).date_naive();
+        let filter = format!("date(created_at) = '{}'", yesterday);
+        self.store.query_with_filter(&filter, 100).await
+    }
+
+    /// Get memories from last N days
+    pub async fn get_last_days(&self, n: i64) -> Result<Vec<Memory>> {
+        let days_ago = (chrono::Utc::now() - chrono::Duration::days(n)).date_naive();
+        let filter = format!("date(created_at) >= '{}'", days_ago);
+        self.store.query_with_filter(&filter, 1000).await
+    }
+}
