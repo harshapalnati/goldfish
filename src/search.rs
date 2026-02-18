@@ -106,7 +106,8 @@ impl Clone for MemorySearch {
         Self {
             store: Arc::clone(&self.store),
             index: self.index.clone(),
-            reader: self.index
+            reader: self
+                .index
                 .reader_builder()
                 .reload_policy(ReloadPolicy::OnCommitWithDelay)
                 .try_into()
@@ -261,7 +262,8 @@ impl MemorySearch {
             .map_err(|e| MemoryError::SearchIndex(format!("Failed to create writer: {}", e)))?;
 
         // Clear existing index
-        writer.delete_all_documents()
+        writer
+            .delete_all_documents()
             .map_err(|e| MemoryError::SearchIndex(format!("Failed to clear index: {}", e)))?;
 
         let mut count = 0;
@@ -384,10 +386,8 @@ impl MemorySearch {
                 if let Some(ref mem_type) = config.memory_type {
                     let type_term =
                         Term::from_field_text(self.fields.memory_type, &mem_type.to_string());
-                    let type_query = tantivy::query::TermQuery::new(
-                        type_term,
-                        IndexRecordOption::Basic,
-                    );
+                    let type_query =
+                        tantivy::query::TermQuery::new(type_term, IndexRecordOption::Basic);
                     Box::new(BooleanQuery::new(vec![
                         (Occur::Must, parsed_query),
                         (Occur::Must, Box::new(type_query)),
@@ -442,7 +442,11 @@ impl MemorySearch {
         }
 
         // Re-sort by combined score and update ranks
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         for (i, r) in results.iter_mut().enumerate() {
             r.rank = i + 1;
         }
@@ -486,7 +490,11 @@ impl MemorySearch {
             }
         }
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(config.max_results);
 
         for (i, r) in results.iter_mut().enumerate() {
@@ -552,7 +560,7 @@ impl MemorySearch {
 
 #[cfg(test)]
 mod tests {
-    use crate::{MemorySystem, Memory, MemoryType};
+    use crate::{Memory, MemorySystem, MemoryType};
 
     #[tokio::test]
     async fn fulltext_search_finds_saved_memory() {

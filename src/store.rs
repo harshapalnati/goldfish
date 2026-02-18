@@ -133,13 +133,11 @@ impl MemoryStore {
     /// Delete a memory permanently
     pub async fn delete(&self, id: &str) -> Result<()> {
         // First delete associations
-        sqlx::query(
-            "DELETE FROM associations WHERE source_id = ? OR target_id = ?"
-        )
-        .bind(id)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("DELETE FROM associations WHERE source_id = ? OR target_id = ?")
+            .bind(id)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
         // Then delete the memory
         sqlx::query("DELETE FROM memories WHERE id = ?")
@@ -153,7 +151,7 @@ impl MemoryStore {
     /// Soft delete (forget) a memory
     pub async fn forget(&self, id: &str) -> Result<bool> {
         let result = sqlx::query(
-            "UPDATE memories SET forgotten = 1, updated_at = ? WHERE id = ? AND forgotten = 0"
+            "UPDATE memories SET forgotten = 1, updated_at = ? WHERE id = ? AND forgotten = 0",
         )
         .bind(chrono::Utc::now())
         .bind(id)
@@ -166,7 +164,7 @@ impl MemoryStore {
     /// Restore a forgotten memory
     pub async fn restore(&self, id: &str) -> Result<bool> {
         let result = sqlx::query(
-            "UPDATE memories SET forgotten = 0, updated_at = ? WHERE id = ? AND forgotten = 1"
+            "UPDATE memories SET forgotten = 0, updated_at = ? WHERE id = ? AND forgotten = 1",
         )
         .bind(chrono::Utc::now())
         .bind(id)
@@ -269,8 +267,7 @@ impl MemoryStore {
         depth: u32,
         exclude_ids: &[String],
     ) -> Result<(Vec<Memory>, Vec<Association>)> {
-        let mut visited: std::collections::HashSet<String> =
-            exclude_ids.iter().cloned().collect();
+        let mut visited: std::collections::HashSet<String> = exclude_ids.iter().cloned().collect();
         visited.insert(memory_id.to_string());
 
         let mut all_associations = Vec::new();
@@ -324,11 +321,7 @@ impl MemoryStore {
     }
 
     /// Get memories by type
-    pub async fn get_by_type(
-        &self,
-        memory_type: MemoryType,
-        limit: i64,
-    ) -> Result<Vec<Memory>> {
+    pub async fn get_by_type(&self, memory_type: MemoryType, limit: i64) -> Result<Vec<Memory>> {
         let rows = sqlx::query(
             r#"
             SELECT id, content, memory_type, importance, created_at, updated_at,
@@ -348,11 +341,7 @@ impl MemoryStore {
     }
 
     /// Get high-importance memories
-    pub async fn get_high_importance(
-        &self,
-        threshold: f32,
-        limit: i64,
-    ) -> Result<Vec<Memory>> {
+    pub async fn get_high_importance(&self, threshold: f32, limit: i64) -> Result<Vec<Memory>> {
         let rows = sqlx::query(
             r#"
             SELECT id, content, memory_type, importance, created_at, updated_at,
@@ -586,7 +575,9 @@ impl MemoryStore {
                     title: row.try_get("title").unwrap_or_default(),
                     context: row.try_get("context").unwrap_or_default(),
                     memory_ids,
-                    started_at: row.try_get("started_at").unwrap_or_else(|_| chrono::Utc::now()),
+                    started_at: row
+                        .try_get("started_at")
+                        .unwrap_or_else(|_| chrono::Utc::now()),
                     ended_at: row.try_get("ended_at").ok(),
                     importance: row.try_get("importance").unwrap_or(0.5),
                 }))
@@ -620,7 +611,9 @@ impl MemoryStore {
                 title: row.try_get("title").unwrap_or_default(),
                 context: row.try_get("context").unwrap_or_default(),
                 memory_ids,
-                started_at: row.try_get("started_at").unwrap_or_else(|_| chrono::Utc::now()),
+                started_at: row
+                    .try_get("started_at")
+                    .unwrap_or_else(|_| chrono::Utc::now()),
                 ended_at: row.try_get("ended_at").ok(),
                 importance: row.try_get("importance").unwrap_or(0.5),
             });
@@ -638,7 +631,10 @@ impl MemoryStore {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(|r| r.try_get("memory_id").unwrap_or_default()).collect())
+        Ok(rows
+            .iter()
+            .map(|r| r.try_get("memory_id").unwrap_or_default())
+            .collect())
     }
 
     // ─── Memory Summary CRUD ──────────────────────────────────────────────
@@ -691,7 +687,9 @@ impl MemoryStore {
                 summary_text: row.try_get("summary_text").unwrap_or_default(),
                 original_memory_ids,
                 memory_type: parse_memory_type(&mem_type_str),
-                created_at: row.try_get("created_at").unwrap_or_else(|_| chrono::Utc::now()),
+                created_at: row
+                    .try_get("created_at")
+                    .unwrap_or_else(|_| chrono::Utc::now()),
                 importance: row.try_get("importance").unwrap_or(0.5),
             });
         }
@@ -718,8 +716,8 @@ pub enum SortOrder {
 
 /// Helper: Convert database row to Memory
 fn row_to_memory(row: &sqlx::sqlite::SqliteRow) -> Memory {
-    use sqlx::Row;
     use crate::confidence::MemoryConfidence;
+    use sqlx::Row;
 
     let mem_type_str: String = row.try_get("memory_type").unwrap_or_default();
     let memory_type = parse_memory_type(&mem_type_str);
@@ -732,12 +730,12 @@ fn row_to_memory(row: &sqlx::sqlite::SqliteRow) -> Memory {
     let mut confidence: MemoryConfidence = confidence_data
         .and_then(|s| serde_json::from_str::<MemoryConfidence>(&s).ok())
         .unwrap_or_default();
-    
+
     // Override with stored score if present
     if let Ok(score) = row.try_get::<f32, _>("confidence_score") {
         confidence.score = score;
     }
-    
+
     // Parse verification status
     if let Ok(status_str) = row.try_get::<String, _>("verification_status") {
         confidence.status = parse_verification_status(&status_str);
@@ -751,8 +749,12 @@ fn row_to_memory(row: &sqlx::sqlite::SqliteRow) -> Memory {
         priority: row.try_get("importance").unwrap_or(0.5),
         emotional_valence: 0.0,
         tags: Vec::new(),
-        created_at: row.try_get("created_at").unwrap_or_else(|_| chrono::Utc::now()),
-        updated_at: row.try_get("updated_at").unwrap_or_else(|_| chrono::Utc::now()),
+        created_at: row
+            .try_get("created_at")
+            .unwrap_or_else(|_| chrono::Utc::now()),
+        updated_at: row
+            .try_get("updated_at")
+            .unwrap_or_else(|_| chrono::Utc::now()),
         last_accessed_at: row
             .try_get("last_accessed_at")
             .unwrap_or_else(|_| chrono::Utc::now()),
@@ -807,7 +809,9 @@ fn row_to_association(row: &sqlx::sqlite::SqliteRow) -> Association {
         target_id: row.try_get("target_id").unwrap_or_default(),
         relation_type,
         weight: row.try_get("weight").unwrap_or(0.5),
-        created_at: row.try_get("created_at").unwrap_or_else(|_| chrono::Utc::now()),
+        created_at: row
+            .try_get("created_at")
+            .unwrap_or_else(|_| chrono::Utc::now()),
     }
 }
 

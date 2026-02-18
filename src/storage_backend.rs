@@ -111,7 +111,8 @@ impl StorageBackend for MemoryStore {
     }
 
     async fn add_memory_to_experience(&self, experience_id: &str, memory_id: &str) -> Result<()> {
-        self.add_memory_to_experience(experience_id, memory_id).await
+        self.add_memory_to_experience(experience_id, memory_id)
+            .await
     }
 
     async fn save_summary(&self, summary: &MemorySummary) -> Result<()> {

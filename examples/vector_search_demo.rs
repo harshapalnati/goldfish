@@ -2,7 +2,7 @@
 //!
 //! Run: cargo run --example vector_search_demo
 
-use goldfish::{MemoryCortex, Memory, MemoryType};
+use goldfish::{Memory, MemoryCortex, MemoryType};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -15,19 +15,24 @@ async fn main() -> anyhow::Result<()> {
 
     // Store memories with semantic content
     println!("📝 Storing memories...");
-    
+
     let memories = vec![
         ("Rust is a systems programming language", MemoryType::Fact),
         ("Python is great for machine learning", MemoryType::Fact),
         ("JavaScript runs in the browser", MemoryType::Fact),
         ("I love coding in Rust", MemoryType::Preference),
         ("User prefers dark mode", MemoryType::Preference),
-        ( "The weather is sunny today", MemoryType::Fact),
-        ("Need to learn more about async programming", MemoryType::Goal),
+        ("The weather is sunny today", MemoryType::Fact),
+        (
+            "Need to learn more about async programming",
+            MemoryType::Goal,
+        ),
     ];
 
     for (content, mem_type) in &memories {
-        cortex.remember(&Memory::new(content.to_string(), *mem_type)).await?;
+        cortex
+            .remember(&Memory::new(content.to_string(), *mem_type))
+            .await?;
     }
     println!("   ✅ Stored {} memories\n", memories.len());
 
@@ -42,9 +47,10 @@ async fn main() -> anyhow::Result<()> {
     for query in queries {
         println!("🔎 Query: '{}'", query);
         let results = cortex.recall(query, 3).await?;
-        
+
         for (i, result) in results.iter().enumerate() {
-            println!("   {}. {} [{}] (score: {:.3})",
+            println!(
+                "   {}. {} [{}] (score: {:.3})",
                 i + 1,
                 result.memory.content,
                 result.memory.memory_type,

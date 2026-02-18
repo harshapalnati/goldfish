@@ -24,14 +24,14 @@ pub trait VectorBackend: Send + Sync {
 pub mod lancedb {
     use super::*;
     use crate::error::MemoryError;
+    use ::lancedb::connect;
+    use ::lancedb::query::{ExecutableQuery, QueryBase};
+    use ::lancedb::table::Table;
     use arrow_array::{
         types::Float32Type, Array, ArrayRef, FixedSizeListArray, Float32Array, Float64Array,
         RecordBatch, RecordBatchIterator, StringArray,
     };
     use arrow_schema::{DataType, Field, Schema};
-    use ::lancedb::connect;
-    use ::lancedb::query::{ExecutableQuery, QueryBase};
-    use ::lancedb::table::Table;
     use futures::StreamExt;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -168,7 +168,8 @@ pub mod lancedb {
             let schema = batch.schema();
             let batches = Box::new(RecordBatchIterator::new(vec![Ok(batch)], schema));
 
-            table.add(batches)
+            table
+                .add(batches)
                 .execute()
                 .await
                 .map_err(|e| MemoryError::VectorDb(format!("LanceDB upsert failed: {e}")))?;
@@ -178,7 +179,8 @@ pub mod lancedb {
 
         async fn delete(&self, id: &str) -> Result<()> {
             let table = self.get_or_init_table().await?;
-            table.delete(&format!("id = '{id}'"))
+            table
+                .delete(&format!("id = '{id}'"))
                 .await
                 .map_err(|e| MemoryError::VectorDb(format!("LanceDB delete failed: {e}")))?;
             Ok(())
@@ -267,7 +269,11 @@ pub mod lancedb {
                 }
             }
 
-            hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+            hits.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
             hits.truncate(limit);
             Ok(hits)
         }

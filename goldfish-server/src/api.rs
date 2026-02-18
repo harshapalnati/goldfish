@@ -1,12 +1,12 @@
+use crate::models::{ContextResponse, CreateMemoryRequest, MemoryResponse, SearchRequest};
+use crate::state::AppState;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
-use std::sync::Arc;
 use goldfish::{ContextWindow, Memory, MemoryType};
-use crate::models::{CreateMemoryRequest, MemoryResponse, SearchRequest, ContextResponse};
-use crate::state::AppState;
+use std::sync::Arc;
 
 pub async fn health_check() -> StatusCode {
     StatusCode::OK
@@ -22,7 +22,7 @@ pub async fn create_memory(
         "fact" => MemoryType::Fact,
         "goal" => MemoryType::Goal,
         "preference" => MemoryType::Preference,
-        "experience" => MemoryType::Event, 
+        "experience" => MemoryType::Event,
         "decision" => MemoryType::Decision,
         _ => MemoryType::Fact,
     };
@@ -32,7 +32,7 @@ pub async fn create_memory(
     if let Some(imp) = payload.importance {
         memory.importance = imp;
     }
-    
+
     // Capture ID before moving memory into remember (if remember consumes it, but it takes reference)
     let id = memory.id.clone();
     let created_at = memory.created_at;
@@ -61,7 +61,7 @@ pub async fn search_memories(
     Query(params): Query<SearchRequest>,
 ) -> Result<Json<Vec<MemoryResponse>>, StatusCode> {
     let limit = params.limit.unwrap_or(10);
-    
+
     // Use cortex.recall instead of search
     match state.cortex.recall(&params.q, limit).await {
         Ok(results) => {
@@ -89,19 +89,25 @@ pub async fn get_context(
 ) -> Result<Json<ContextResponse>, StatusCode> {
     // 1. Get structured working memory items
     let active_items = state.cortex.get_context().await;
-    
-    let responses = active_items.iter().map(|m| MemoryResponse {
-        id: m.memory_id.clone(),
-        content: m.content.clone(),
-        memory_type: format!("{:?}", m.memory_type),
-        importance: m.attention_score, // Mapping attention to importance for view
-        created_at: m.accessed_at.to_rfc3339(), // Using accessed_at for WM items
-    }).collect();
+
+    let responses = active_items
+        .iter()
+        .map(|m| MemoryResponse {
+            id: m.memory_id.clone(),
+            content: m.content.clone(),
+            memory_type: format!("{:?}", m.memory_type),
+            importance: m.attention_score, // Mapping attention to importance for view
+            created_at: m.accessed_at.to_rfc3339(), // Using accessed_at for WM items
+        })
+        .collect();
 
     // 2. Build formatted string for LLM
     let context_window = ContextWindow::new(2000);
-    let formatted_context = context_window.build(&state.cortex).await.unwrap_or_default();
-    
+    let formatted_context = context_window
+        .build(&state.cortex)
+        .await
+        .unwrap_or_default();
+
     // 3. Get current episode ID if any
     let episode_id = state.cortex.get_current_experience().await.map(|e| e.id);
 

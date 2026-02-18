@@ -1,8 +1,6 @@
 //! Example of an AI agent using the MemoryCortex
 
-use goldfish::{
-    MemoryCortex, Memory, MemoryType,
-};
+use goldfish::{Memory, MemoryCortex, MemoryType};
 
 /// Simulated AI Agent with Memory Cortex
 struct Agent {
@@ -47,25 +45,27 @@ impl Agent {
     /// Learn from conversation
     async fn learn_from_message(&self, message: &str) -> anyhow::Result<()> {
         let msg = message.to_lowercase();
-        
+
         // Preferences
         if msg.contains("like") || msg.contains("prefer") || msg.contains("love") {
             self.cortex.prefer(message, 0.7).await?;
             println!("  → Learned preference");
         }
-        
+
         // Goals
         if msg.contains("goal") || msg.contains("want") || msg.contains("need to") {
             self.cortex.goal(message).await?;
             println!("  → Learned goal");
         }
-        
+
         // Facts
         if msg.contains("is") || msg.contains("are") || msg.contains("was") {
-            self.cortex.remember(&Memory::new(message, MemoryType::Fact)).await?;
+            self.cortex
+                .remember(&Memory::new(message, MemoryType::Fact))
+                .await?;
             println!("  → Learned fact");
         }
-        
+
         Ok(())
     }
 
@@ -84,15 +84,20 @@ impl Agent {
         println!("\n⭐ Important:");
         let important = self.cortex.get_important(5).await?;
         for m in &important {
-            println!("   • [{}] {}", m.memory_type, &m.content[..m.content.len().min(50)]);
+            println!(
+                "   • [{}] {}",
+                m.memory_type,
+                &m.content[..m.content.len().min(50)]
+            );
         }
 
         // Context
         println!("\n🧠 Working Memory:");
         let context = self.cortex.get_context().await;
         for item in &context {
-            println!("   • {} (attention: {:.2})", 
-                &item.content[..item.content.len().min(30)], 
+            println!(
+                "   • {} (attention: {:.2})",
+                &item.content[..item.content.len().min(30)],
                 item.attention_score
             );
         }
@@ -103,7 +108,7 @@ impl Agent {
     /// Get full context for LLM
     async fn get_llm_context(&self) -> Result<String, goldfish::MemoryError> {
         use goldfish::ContextWindow;
-        
+
         let config = ContextWindow {
             max_tokens: 2000,
             include_working_memory: true,
@@ -111,7 +116,7 @@ impl Agent {
             include_important: true,
             max_important: 10,
         };
-        
+
         self.cortex.build_context(&config).await
     }
 }
@@ -126,11 +131,14 @@ async fn main() -> anyhow::Result<()> {
 
     // Start a new episode
     println!("🎬 Starting episode: 'Initial Interaction'...");
-    agent.cortex.start_episode("Initial Interaction", "User onboarding session").await?;
+    agent
+        .cortex
+        .start_episode("Initial Interaction", "User onboarding session")
+        .await?;
 
     // Pin a core directive
-    let directive = Memory::new("Always be helpful and concise", MemoryType::Identity)
-        .with_importance(1.0);
+    let directive =
+        Memory::new("Always be helpful and concise", MemoryType::Identity).with_importance(1.0);
     agent.cortex.remember(&directive).await?;
     agent.cortex.pin(&directive.id).await;
     println!("📌 Pinned directive: {}", directive.content);

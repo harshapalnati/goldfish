@@ -40,7 +40,7 @@ impl Default for MaintenanceConfig {
             merge_similarity_threshold: 0.95,
             enable_decay: true,
             enable_pruning: true,
-            enable_merging: false, // Disabled by default (expensive)
+            enable_merging: false,       // Disabled by default (expensive)
             enable_consolidation: false, // Disabled by default
             consolidation_age_days: 30,
             consolidation_threshold: 0.3,
@@ -79,7 +79,8 @@ pub async fn run_maintenance(
     }
 
     if config.enable_merging {
-        report.merged = merge_similar_memories(memory_store, config.merge_similarity_threshold).await?;
+        report.merged =
+            merge_similar_memories(memory_store, config.merge_similarity_threshold).await?;
     }
 
     Ok(report)

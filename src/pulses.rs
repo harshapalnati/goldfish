@@ -174,10 +174,16 @@ impl Pulse {
             Pulse::NewMemory { memory, .. } => {
                 format!("New {} memory created: {}", memory.memory_type, memory.id)
             }
-            Pulse::MemoryUpdated { memory_id, changes, .. } => {
+            Pulse::MemoryUpdated {
+                memory_id, changes, ..
+            } => {
                 format!("Memory {} updated: {:?}", memory_id, changes)
             }
-            Pulse::MemoryAccessed { memory_id, access_count, .. } => {
+            Pulse::MemoryAccessed {
+                memory_id,
+                access_count,
+                ..
+            } => {
                 format!("Memory {} accessed (count: {})", memory_id, access_count)
             }
             Pulse::MemoryForgotten { memory_id, .. } => {
@@ -223,13 +229,28 @@ impl Pulse {
                 merged,
                 ..
             } => {
-                format!("Maintenance: {} decayed, {} pruned, {} merged", decayed, pruned, merged)
+                format!(
+                    "Maintenance: {} decayed, {} pruned, {} merged",
+                    decayed, pruned, merged
+                )
             }
-            Pulse::SearchPerformed { query, results_count, .. } => {
+            Pulse::SearchPerformed {
+                query,
+                results_count,
+                ..
+            } => {
                 format!("Search for '{}' returned {} results", query, results_count)
             }
-            Pulse::BatchCompleted { operation, count, success, .. } => {
-                format!("Batch {}: {} items (success: {})", operation, count, success)
+            Pulse::BatchCompleted {
+                operation,
+                count,
+                success,
+                ..
+            } => {
+                format!(
+                    "Batch {}: {} items (success: {})",
+                    operation, count, success
+                )
             }
         }
     }
@@ -585,7 +606,12 @@ pub mod pulse {
     }
 
     /// Create a maintenance completed pulse
-    pub fn maintenance_completed(decayed: usize, pruned: usize, merged: usize, duration_ms: u64) -> Pulse {
+    pub fn maintenance_completed(
+        decayed: usize,
+        pruned: usize,
+        merged: usize,
+        duration_ms: u64,
+    ) -> Pulse {
         Pulse::MaintenanceCompleted {
             decayed,
             pruned,

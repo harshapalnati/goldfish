@@ -10,9 +10,8 @@
 //! Run: cargo run --example comprehensive
 
 use goldfish::{
-    MemorySystem, Memory, MemoryType, MemoryCortex, 
-    HybridSearchConfig, EvalHarness, print_results,
-    run_standard_eval, StorageBackend, Experience,
+    print_results, run_standard_eval, EvalHarness, Experience, HybridSearchConfig, Memory,
+    MemoryCortex, MemorySystem, MemoryType, StorageBackend,
 };
 
 #[tokio::main]
@@ -28,72 +27,86 @@ async fn main() -> anyhow::Result<()> {
 
     // Phase 2: Store diverse memories
     println!("📝 Phase 2: Store Memories");
-    
+
     // Facts
-    cortex.remember(&Memory::new(
-        "Rust is a systems programming language with zero-cost abstractions",
-        MemoryType::Fact
-    )).await?;
-    
-    cortex.remember(&Memory::new(
-        "Python is dynamically typed and great for rapid prototyping",
-        MemoryType::Fact
-    )).await?;
-    
-    cortex.remember(&Memory::new(
-        "PostgreSQL supports JSONB for flexible schema design",
-        MemoryType::Fact
-    )).await?;
+    cortex
+        .remember(&Memory::new(
+            "Rust is a systems programming language with zero-cost abstractions",
+            MemoryType::Fact,
+        ))
+        .await?;
+
+    cortex
+        .remember(&Memory::new(
+            "Python is dynamically typed and great for rapid prototyping",
+            MemoryType::Fact,
+        ))
+        .await?;
+
+    cortex
+        .remember(&Memory::new(
+            "PostgreSQL supports JSONB for flexible schema design",
+            MemoryType::Fact,
+        ))
+        .await?;
 
     // Preferences
-    cortex.prefer("User prefers dark mode in all applications", 0.9).await?;
-    cortex.prefer("User likes concise, direct answers", 0.85).await?;
-    cortex.prefer("User prefers Rust over Python for systems code", 0.8).await?;
+    cortex
+        .prefer("User prefers dark mode in all applications", 0.9)
+        .await?;
+    cortex
+        .prefer("User likes concise, direct answers", 0.85)
+        .await?;
+    cortex
+        .prefer("User prefers Rust over Python for systems code", 0.8)
+        .await?;
 
     // Goals
-    cortex.goal("Build a production-ready memory system").await?;
+    cortex
+        .goal("Build a production-ready memory system")
+        .await?;
     cortex.goal("Learn advanced Rust patterns").await?;
 
     println!("✅ Stored facts, preferences, and goals\n");
 
     // Phase 3: Working Memory & Experiences
     println!("🧠 Phase 3: Working Memory & Experiences");
-    
+
     // Start an experience
-    cortex.start_episode("Coding Session", "Implementing hybrid retrieval").await?;
-    
+    cortex
+        .start_episode("Coding Session", "Implementing hybrid retrieval")
+        .await?;
+
     // Think about specific memories (adds to working memory)
     cortex.think_about("rust").await?;
     cortex.think_about("memory").await?;
-    
+
     // Show working memory
     let context = cortex.get_context().await;
     println!("Working Memory ({} items):", context.len());
     for item in context.iter().take(3) {
-        println!("  • {}... (attention: {:.2})", 
-            &item.content[..item.content.len().min(40)], 
+        println!(
+            "  • {}... (attention: {:.2})",
+            &item.content[..item.content.len().min(40)],
             item.attention_score
         );
     }
-    
+
     cortex.end_episode().await?;
     println!("✅ Experience captured\n");
 
     // Phase 4: Hybrid Retrieval
     println!("🔍 Phase 4: Hybrid Retrieval");
-    
-    let queries = vec![
-        "programming",
-        "user preferences",
-        "database",
-    ];
+
+    let queries = vec!["programming", "user preferences", "database"];
 
     for query in queries {
         println!("\n  Query: '{}'", query);
         let results = cortex.recall(query, 3).await?;
-        
+
         for (i, result) in results.iter().enumerate() {
-            println!("    {}. {} [{}] (score: {:.3})",
+            println!(
+                "    {}. {} [{}] (score: {:.3})",
                 i + 1,
                 &result.memory.content[..result.memory.content.len().min(45)],
                 result.memory.memory_type,
@@ -107,7 +120,8 @@ async fn main() -> anyhow::Result<()> {
     println!("⭐ Phase 5: Most Important Memories");
     let important = cortex.get_important(5).await?;
     for m in &important {
-        println!("  • [{}] {} (imp: {:.2})", 
+        println!(
+            "  • [{}] {} (imp: {:.2})",
             m.memory_type,
             &m.content[..m.content.len().min(50)],
             m.importance
@@ -118,23 +132,19 @@ async fn main() -> anyhow::Result<()> {
     // Phase 6: Evaluation
     println!("📊 Phase 6: Evaluation Harness");
     println!("Running baseline comparisons...\n");
-    
+
     // Create eval harness
     let backend = memory.store().clone();
     let mut harness = EvalHarness::new(backend);
-    
+
     // Add test cases
     harness.add_test_case(
         "rust",
         vec![], // Would populate with actual IDs in real test
-        "Find Rust-related memories"
+        "Find Rust-related memories",
     );
-    
-    harness.add_test_case(
-        "preferences",
-        vec![],
-        "Find user preferences"
-    );
+
+    harness.add_test_case("preferences", vec![], "Find user preferences");
 
     // Run comparison
     let results = harness.compare_baselines().await?;

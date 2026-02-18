@@ -71,4 +71,3 @@ impl EmbeddingProvider for HashEmbeddingProvider {
         Ok(texts.iter().map(|t| self.embed_one(t)).collect())
     }
 }
-

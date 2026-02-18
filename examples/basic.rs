@@ -30,18 +30,15 @@ async fn main() -> anyhow::Result<()> {
     memory.save(&ownership_fact).await?;
     println!("  ✓ Saved: '{}'", ownership_fact.content);
 
-    let user_pref = Memory::new(
-        "User prefers concise explanations",
-        MemoryType::Preference,
-    )
-    .with_importance(0.8);
+    let user_pref = Memory::new("User prefers concise explanations", MemoryType::Preference)
+        .with_importance(0.8);
     memory.save(&user_pref).await?;
-    println!("  ✓ Saved: '{}' (importance: {})", user_pref.content, user_pref.importance);
-
-    let goal = Memory::new(
-        "Learn Rust programming",
-        MemoryType::Goal,
+    println!(
+        "  ✓ Saved: '{}' (importance: {})",
+        user_pref.content, user_pref.importance
     );
+
+    let goal = Memory::new("Learn Rust programming", MemoryType::Goal);
     memory.save(&goal).await?;
     println!("  ✓ Saved: '{}'", goal.content);
 

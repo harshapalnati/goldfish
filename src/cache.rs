@@ -16,7 +16,7 @@ impl CacheKey {
     pub fn memory(id: &MemoryId) -> Self {
         Self(format!("memory:{}", id))
     }
-    
+
     pub fn search(query: &str) -> Self {
         Self(format!("search:{}", query))
     }
@@ -76,18 +76,18 @@ impl L1Cache {
     }
 
     pub async fn put<T: Serialize>(&self, key: CacheKey, value: &T) -> Result<()> {
-        let data = bincode::serialize(value)
-            .map_err(|e| MemoryError::Serialization(e.to_string()))?;
-        
+        let data =
+            bincode::serialize(value).map_err(|e| MemoryError::Serialization(e.to_string()))?;
+
         let mut entries = self.entries.write().await;
-        
+
         if entries.len() >= self.config.max_entries {
             self.stats.write().await.evictions += 1;
             if let Some(first) = entries.keys().next().cloned() {
                 entries.remove(&first);
             }
         }
-        
+
         entries.insert(key, data);
         Ok(())
     }
@@ -166,12 +166,12 @@ impl CacheConfigBuilder {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     pub fn max_entries(mut self, count: usize) -> Self {
         self.config.max_entries = count;
         self
     }
-    
+
     pub fn build(self) -> CacheConfig {
         self.config
     }

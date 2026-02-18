@@ -293,28 +293,28 @@ pub struct VersioningStats {
 pub trait VersionRepository: Send + Sync {
     /// Save a new version
     async fn save_version(&self, version: &MemoryVersion) -> Result<()>;
-    
+
     /// Get a specific version
     async fn get_version(&self, version_id: &VersionId) -> Result<Option<MemoryVersion>>;
-    
+
     /// Get all versions for a memory
     async fn get_memory_versions(&self, memory_id: &MemoryId) -> Result<Vec<MemoryVersion>>;
-    
+
     /// Get the latest version for a memory
     async fn get_latest_version(&self, memory_id: &MemoryId) -> Result<Option<MemoryVersion>>;
-    
+
     /// Delete old versions
     async fn prune_versions(&self, memory_id: &MemoryId, keep_count: usize) -> Result<u64>;
-    
+
     /// Create a branch
     async fn create_branch(&self, branch: &MemoryBranch) -> Result<()>;
-    
+
     /// Get branches for a memory
     async fn get_branches(&self, memory_id: &MemoryId) -> Result<Vec<MemoryBranch>>;
-    
+
     /// Record a conflict
     async fn record_conflict(&self, conflict: &VersionConflict) -> Result<()>;
-    
+
     /// Get unresolved conflicts
     async fn get_unresolved_conflicts(&self) -> Result<Vec<VersionConflict>>;
 }
@@ -367,7 +367,9 @@ impl VersioningEngine {
         // Auto-prune if enabled and threshold exceeded
         if self.config.auto_prune && versions.len() >= self.config.max_versions_per_memory {
             let to_prune = versions.len() - self.config.max_versions_per_memory + 1;
-            self.repository.prune_versions(&memory.id, self.config.max_versions_per_memory - to_prune).await?;
+            self.repository
+                .prune_versions(&memory.id, self.config.max_versions_per_memory - to_prune)
+                .await?;
         }
 
         Ok(version)
@@ -383,11 +385,13 @@ impl VersioningEngine {
     /// Rollback a memory to a specific version
     pub async fn rollback(&self, memory_id: &MemoryId, version_number: u32) -> Result<Memory> {
         let versions = self.get_history(memory_id).await?;
-        
+
         let target = versions
             .iter()
             .find(|v| v.version_number == version_number)
-            .ok_or_else(|| MemoryError::NotFound(format!("Version {} not found", version_number)))?;
+            .ok_or_else(|| {
+                MemoryError::NotFound(format!("Version {} not found", version_number))
+            })?;
 
         // Create rollback version
         let rollback_version = MemoryVersion {
@@ -396,7 +400,9 @@ impl VersioningEngine {
             version_number: versions.len() as u32 + 1,
             memory: target.memory.clone(),
             created_at: Utc::now(),
-            author: VersionAuthor::System { name: "rollback".to_string() },
+            author: VersionAuthor::System {
+                name: "rollback".to_string(),
+            },
             change_reason: Some(format!("Rollback to version {}", version_number)),
             previous_version_id: versions.last().map(|v| v.version_id.clone()),
             diff: None,
@@ -408,10 +414,20 @@ impl VersioningEngine {
     }
 
     /// Compare two versions
-    pub async fn compare_versions(&self, version_a: &VersionId, version_b: &VersionId) -> Result<MemoryDiff> {
-        let ver_a = self.repository.get_version(version_a).await?
+    pub async fn compare_versions(
+        &self,
+        version_a: &VersionId,
+        version_b: &VersionId,
+    ) -> Result<MemoryDiff> {
+        let ver_a = self
+            .repository
+            .get_version(version_a)
+            .await?
             .ok_or_else(|| MemoryError::NotFound("Version A not found".to_string()))?;
-        let ver_b = self.repository.get_version(version_b).await?
+        let ver_b = self
+            .repository
+            .get_version(version_b)
+            .await?
             .ok_or_else(|| MemoryError::NotFound("Version B not found".to_string()))?;
 
         Ok(self.diff_memories(&ver_a.memory, &ver_b.memory))
@@ -425,10 +441,15 @@ impl VersioningEngine {
         description: Option<&str>,
     ) -> Result<MemoryBranch> {
         if !self.config.enable_branching {
-            return Err(MemoryError::Configuration("Branching is disabled".to_string()));
+            return Err(MemoryError::Configuration(
+                "Branching is disabled".to_string(),
+            ));
         }
 
-        let version = self.repository.get_version(version_id).await?
+        let version = self
+            .repository
+            .get_version(version_id)
+            .await?
             .ok_or_else(|| MemoryError::NotFound("Version not found".to_string()))?;
 
         let branch = MemoryBranch {
@@ -470,7 +491,7 @@ impl VersioningEngine {
         let mut conflicts = vec![];
         for window in mem_versions.windows(2) {
             let (older, newer) = (&window[0], &window[1]);
-            
+
             // Check if changes overlap
             let diff = self.diff_memories(&older.memory, &newer.memory);
             if !diff.changes.is_empty() {
@@ -481,8 +502,7 @@ impl VersioningEngine {
                     detected_at: Utc::now(),
                     description: format!(
                         "Concurrent changes detected between versions {} and {}",
-                        older.version_number,
-                        newer.version_number
+                        older.version_number, newer.version_number
                     ),
                     resolved: false,
                     resolution: None,
@@ -507,10 +527,17 @@ impl VersioningEngine {
     }
 
     /// Calculate diff between a previous version and current memory
-    async fn calculate_diff(&self, previous_version_id: &VersionId, current: &Memory) -> Result<MemoryDiff> {
-        let previous = self.repository.get_version(previous_version_id).await?
+    async fn calculate_diff(
+        &self,
+        previous_version_id: &VersionId,
+        current: &Memory,
+    ) -> Result<MemoryDiff> {
+        let previous = self
+            .repository
+            .get_version(previous_version_id)
+            .await?
             .ok_or_else(|| MemoryError::NotFound("Previous version not found".to_string()))?;
-        
+
         Ok(self.diff_memories(&previous.memory, current))
     }
 
@@ -561,7 +588,7 @@ impl VersioningEngine {
         // Compare tags
         let old_tags: std::collections::HashSet<_> = old.tags.iter().collect();
         let new_tags: std::collections::HashSet<_> = new.tags.iter().collect();
-        
+
         let added_tags: Vec<_> = new_tags.difference(&old_tags).cloned().collect();
         let removed_tags: Vec<_> = old_tags.difference(&new_tags).cloned().collect();
 
@@ -584,21 +611,29 @@ impl VersioningEngine {
         }
 
         // Compare metadata
-        let old_meta = old.metadata.as_ref().map(|m| {
-            if let Some(obj) = m.as_object() {
-                obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-            } else {
-                std::collections::HashMap::new()
-            }
-        }).unwrap_or_default();
-        
-        let new_meta = new.metadata.as_ref().map(|m| {
-            if let Some(obj) = m.as_object() {
-                obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-            } else {
-                std::collections::HashMap::new()
-            }
-        }).unwrap_or_default();
+        let old_meta = old
+            .metadata
+            .as_ref()
+            .map(|m| {
+                if let Some(obj) = m.as_object() {
+                    obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+                } else {
+                    std::collections::HashMap::new()
+                }
+            })
+            .unwrap_or_default();
+
+        let new_meta = new
+            .metadata
+            .as_ref()
+            .map(|m| {
+                if let Some(obj) = m.as_object() {
+                    obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+                } else {
+                    std::collections::HashMap::new()
+                }
+            })
+            .unwrap_or_default();
 
         for (key, new_val) in &new_meta {
             if let Some(old_val) = old_meta.get(key) {
@@ -651,7 +686,11 @@ impl VersioningEngine {
         let summary = format!(
             "{} field(s) changed: {}",
             changes.len(),
-            changes.iter().map(|c| c.field.as_str()).collect::<Vec<_>>().join(", ")
+            changes
+                .iter()
+                .map(|c| c.field.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
 
         MemoryDiff {
@@ -743,23 +782,20 @@ pub mod utils {
     /// Format a diff for display
     pub fn format_diff(diff: &MemoryDiff) -> String {
         let mut output = format!("Changes ({}):\n", diff.change_type);
-        
+
         for change in &diff.changes {
             let prefix = match change.change_kind {
                 FieldChangeKind::Added => "+",
                 FieldChangeKind::Removed => "-",
                 FieldChangeKind::Modified => "~",
             };
-            
+
             output.push_str(&format!(
                 "  {} {}: {:?} → {:?}\n",
-                prefix,
-                change.field,
-                change.old_value,
-                change.new_value
+                prefix, change.field, change.old_value, change.new_value
             ));
         }
-        
+
         output
     }
 }
@@ -827,17 +863,35 @@ mod tests {
 
     // Dummy repository for testing
     struct DummyRepository;
-    
+
     #[async_trait::async_trait]
     impl VersionRepository for DummyRepository {
-        async fn save_version(&self, _version: &MemoryVersion) -> Result<()> { Ok(()) }
-        async fn get_version(&self, _version_id: &VersionId) -> Result<Option<MemoryVersion>> { Ok(None) }
-        async fn get_memory_versions(&self, _memory_id: &MemoryId) -> Result<Vec<MemoryVersion>> { Ok(vec![]) }
-        async fn get_latest_version(&self, _memory_id: &MemoryId) -> Result<Option<MemoryVersion>> { Ok(None) }
-        async fn prune_versions(&self, _memory_id: &MemoryId, _keep_count: usize) -> Result<u64> { Ok(0) }
-        async fn create_branch(&self, _branch: &MemoryBranch) -> Result<()> { Ok(()) }
-        async fn get_branches(&self, _memory_id: &MemoryId) -> Result<Vec<MemoryBranch>> { Ok(vec![]) }
-        async fn record_conflict(&self, _conflict: &VersionConflict) -> Result<()> { Ok(()) }
-        async fn get_unresolved_conflicts(&self) -> Result<Vec<VersionConflict>> { Ok(vec![]) }
+        async fn save_version(&self, _version: &MemoryVersion) -> Result<()> {
+            Ok(())
+        }
+        async fn get_version(&self, _version_id: &VersionId) -> Result<Option<MemoryVersion>> {
+            Ok(None)
+        }
+        async fn get_memory_versions(&self, _memory_id: &MemoryId) -> Result<Vec<MemoryVersion>> {
+            Ok(vec![])
+        }
+        async fn get_latest_version(&self, _memory_id: &MemoryId) -> Result<Option<MemoryVersion>> {
+            Ok(None)
+        }
+        async fn prune_versions(&self, _memory_id: &MemoryId, _keep_count: usize) -> Result<u64> {
+            Ok(0)
+        }
+        async fn create_branch(&self, _branch: &MemoryBranch) -> Result<()> {
+            Ok(())
+        }
+        async fn get_branches(&self, _memory_id: &MemoryId) -> Result<Vec<MemoryBranch>> {
+            Ok(vec![])
+        }
+        async fn record_conflict(&self, _conflict: &VersionConflict) -> Result<()> {
+            Ok(())
+        }
+        async fn get_unresolved_conflicts(&self) -> Result<Vec<VersionConflict>> {
+            Ok(vec![])
+        }
     }
 }

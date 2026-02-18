@@ -133,7 +133,7 @@ async fn store_memory(
     Json(req): Json<StoreMemoryRequest>,
 ) -> Result<Json<MemoryResponse>, StatusCode> {
     let memory_type = parse_memory_type(&req.memory_type);
-    
+
     let mut memory = Memory::new(req.content, memory_type);
     if let Some(imp) = req.importance {
         memory.importance = imp;
@@ -141,10 +141,13 @@ async fn store_memory(
     if let Some(src) = req.source {
         memory.source = Some(src);
     }
-    
+
     let cortex = state.cortex.read().await;
-    cortex.remember(&memory).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+    cortex
+        .remember(&memory)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     Ok(Json(MemoryResponse {
         id: memory.id,
         content: memory.content,
@@ -160,8 +163,11 @@ async fn get_memory(
     Path(id): Path<String>,
 ) -> Result<Json<MemoryResponse>, StatusCode> {
     let cortex = state.cortex.read().await;
-    let memory = cortex.think_about(&id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+    let memory = cortex
+        .think_about(&id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     match memory {
         Some(m) => Ok(Json(MemoryResponse {
             id: m.id,
@@ -180,19 +186,25 @@ async fn search_memories(
     Json(req): Json<SearchRequest>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
     let cortex = state.cortex.read().await;
-    let results = cortex.recall(&req.query, req.limit).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    let search_results: Vec<SearchResult> = results.into_iter().map(|r| {
-        let why = format!("Matched query '{}' with score {:.2}", req.query, r.score);
-        SearchResult {
-            id: r.memory.id,
-            content: r.memory.content,
-            memory_type: format!("{:?}", r.memory.memory_type),
-            score: r.score,
-            why,
-        }
-    }).collect();
-    
+    let results = cortex
+        .recall(&req.query, req.limit)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let search_results: Vec<SearchResult> = results
+        .into_iter()
+        .map(|r| {
+            let why = format!("Matched query '{}' with score {:.2}", req.query, r.score);
+            SearchResult {
+                id: r.memory.id,
+                content: r.memory.content,
+                memory_type: format!("{:?}", r.memory.memory_type),
+                score: r.score,
+                why,
+            }
+        })
+        .collect();
+
     Ok(Json(search_results))
 }
 
@@ -202,23 +214,31 @@ async fn build_context(
     Json(req): Json<ContextRequest>,
 ) -> Result<Json<ContextResponse>, StatusCode> {
     let cortex = state.cortex.read().await;
-    
+
     // Get relevant memories
-    let results = cortex.recall(&req.query, 20).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+    let results = cortex
+        .recall(&req.query, 20)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     // Build context string with citations
     let mut context_parts = vec!["## Relevant Context\n".to_string()];
     let mut citations = vec![];
     let mut tokens_used = 0;
-    
+
     for (i, result) in results.iter().take(10).enumerate() {
-        let part = format!("{} [{}] {}\n", i + 1, result.memory.memory_type, result.memory.content);
+        let part = format!(
+            "{} [{}] {}\n",
+            i + 1,
+            result.memory.memory_type,
+            result.memory.content
+        );
         tokens_used += part.split_whitespace().count();
-        
+
         if tokens_used > req.token_budget {
             break;
         }
-        
+
         context_parts.push(part);
         citations.push(Citation {
             id: result.memory.id.clone(),
@@ -226,9 +246,9 @@ async fn build_context(
             memory_type: format!("{:?}", result.memory.memory_type),
         });
     }
-    
+
     let context = context_parts.join("");
-    
+
     Ok(Json(ContextResponse {
         context,
         tokens_used,
@@ -243,9 +263,11 @@ async fn start_episode(
     Json(req): Json<StartEpisodeRequest>,
 ) -> Result<Json<EpisodeResponse>, StatusCode> {
     let cortex = state.cortex.read().await;
-    let id = cortex.start_episode(&req.title, &req.context.unwrap_or_default()).await
+    let id = cortex
+        .start_episode(&req.title, &req.context.unwrap_or_default())
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+
     Ok(Json(EpisodeResponse {
         id,
         title: req.title,
@@ -259,7 +281,10 @@ async fn end_episode(
     Path(_id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     let cortex = state.cortex.read().await;
-    cortex.end_episode().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    cortex
+        .end_episode()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::OK)
 }
 
@@ -287,7 +312,7 @@ fn parse_memory_type(s: &str) -> MemoryType {
 /// Create the API router
 pub fn create_router(cortex: Arc<RwLock<MemoryCortex>>) -> Router {
     let state = Arc::new(ApiState { cortex });
-    
+
     Router::new()
         .route("/health", get(health_check))
         .route("/v1/memory", post(store_memory))
@@ -303,14 +328,14 @@ pub fn create_router(cortex: Arc<RwLock<MemoryCortex>>) -> Router {
 async fn main() -> anyhow::Result<()> {
     println!("🐠 Goldfish Memory API Server");
     println!("==============================\n");
-    
+
     // Initialize cortex
     let cortex = Arc::new(RwLock::new(
-        MemoryCortex::new("./goldfish_server_data").await?
+        MemoryCortex::new("./goldfish_server_data").await?,
     ));
-    
+
     let app = create_router(cortex);
-    
+
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     println!("✅ Server running on http://localhost:3000");
     println!("\nAPI Endpoints:");
@@ -320,8 +345,8 @@ async fn main() -> anyhow::Result<()> {
     println!("  POST /v1/context         - Build LLM context");
     println!("  POST /v1/episodes/start  - Start episode");
     println!("  GET  /health             - Health check");
-    
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }

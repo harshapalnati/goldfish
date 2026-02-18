@@ -8,8 +8,8 @@
 //! - Memory Summaries: Consolidation of old memories
 
 use crate::error::{MemoryError, Result};
-use crate::types::{Association, Memory, MemoryId, MemoryType, RelationType, MemorySearchResult};
-use crate::vector_search::{VectorIndex, VectorSearchConfig, generate_embedding};
+use crate::types::{Association, Memory, MemoryId, MemorySearchResult, MemoryType, RelationType};
+use crate::vector_search::{generate_embedding, VectorIndex, VectorSearchConfig};
 use crate::MemoryStore;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
@@ -602,7 +602,10 @@ impl MemoryCortex {
         if let Some(ep) = episode.as_mut() {
             ep.add_memory(memory.id.clone());
             // Persist episode-memory link
-            let _ = self.store.add_memory_to_experience(&ep.id, &memory.id).await;
+            let _ = self
+                .store
+                .add_memory_to_experience(&ep.id, &memory.id)
+                .await;
         }
 
         Ok(())
@@ -618,7 +621,10 @@ impl MemoryCortex {
         let mut episode = self.current_experience.write().await;
         if let Some(ep) = episode.as_mut() {
             ep.add_memory(memory.id.clone());
-            let _ = self.store.add_memory_to_experience(&ep.id, &memory.id).await;
+            let _ = self
+                .store
+                .add_memory_to_experience(&ep.id, &memory.id)
+                .await;
         }
 
         Ok(())
@@ -691,12 +697,14 @@ impl MemoryCortex {
                 1.0
             } else {
                 // Check word overlap
-                let query_words: std::collections::HashSet<_> = query_lower.split_whitespace().collect();
-                let content_words: std::collections::HashSet<_> = content_lower.split_whitespace().collect();
+                let query_words: std::collections::HashSet<_> =
+                    query_lower.split_whitespace().collect();
+                let content_words: std::collections::HashSet<_> =
+                    content_lower.split_whitespace().collect();
                 let overlap = query_words.intersection(&content_words).count() as f32;
                 overlap / query_words.len().max(1) as f32
             };
-            
+
             if text_score > 0.0 {
                 let importance = ImportanceCalculator::calculate_with_query(memory, query);
                 let combined_score = text_score * 0.5 + importance * 0.5;
@@ -712,7 +720,9 @@ impl MemoryCortex {
                     if memory.forgotten {
                         continue;
                     }
-                    let entry = scored_memories.entry(memory_id).or_insert((memory.clone(), 0.0));
+                    let entry = scored_memories
+                        .entry(memory_id)
+                        .or_insert((memory.clone(), 0.0));
                     // Combine scores: 50% text, 50% vector
                     entry.1 = entry.1 * 0.5 + similarity * 0.5;
                 }
@@ -860,8 +870,7 @@ impl MemoryCortex {
 
     /// Store a preference
     pub async fn prefer(&self, preference: &str, importance: f32) -> Result<Memory> {
-        let memory =
-            Memory::new(preference, MemoryType::Preference).with_importance(importance);
+        let memory = Memory::new(preference, MemoryType::Preference).with_importance(importance);
 
         self.remember(&memory).await?;
 
@@ -883,12 +892,7 @@ impl MemoryCortex {
     }
 
     /// Create association between memories
-    pub async fn link(
-        &self,
-        from_id: &str,
-        to_id: &str,
-        relation: RelationType,
-    ) -> Result<()> {
+    pub async fn link(&self, from_id: &str, to_id: &str, relation: RelationType) -> Result<()> {
         let assoc = Association::new(from_id, to_id, relation);
         self.store.create_association(&assoc).await
     }
@@ -924,11 +928,7 @@ impl MemoryCortex {
 
     /// Consolidate old, low-importance memories into summaries
     /// Returns the number of memories consolidated
-    pub async fn consolidate(
-        &self,
-        threshold: f32,
-        max_age_days: i64,
-    ) -> Result<usize> {
+    pub async fn consolidate(&self, threshold: f32, max_age_days: i64) -> Result<usize> {
         let cutoff = Utc::now() - Duration::days(max_age_days);
         let filter = format!(
             "created_at < '{}' AND importance < {} AND forgotten = 0",
@@ -945,7 +945,10 @@ impl MemoryCortex {
         // Group by type
         let mut by_type: HashMap<MemoryType, Vec<Memory>> = HashMap::new();
         for mem in &candidates {
-            by_type.entry(mem.memory_type).or_default().push(mem.clone());
+            by_type
+                .entry(mem.memory_type)
+                .or_default()
+                .push(mem.clone());
         }
 
         let mut consolidated_count = 0;
@@ -987,11 +990,7 @@ impl MemoryCortex {
             self.store.save(&summary_memory).await?;
 
             // Save summary record
-            let summary = MemorySummary::new(
-                &summary_text,
-                original_ids.clone(),
-                *mem_type,
-            );
+            let summary = MemorySummary::new(&summary_text, original_ids.clone(), *mem_type);
             self.store.save_summary(&summary).await?;
 
             // Soft-delete originals

@@ -77,7 +77,7 @@ fn normalize_scores(values: &HashMap<String, f32>) -> HashMap<String, f32> {
         max = max.max(*v);
     }
     if (max - min).abs() < f32::EPSILON {
-        return values.iter().map(|(k, _)| (k.clone(), 1.0)).collect();
+        return values.keys().map(|k| (k.clone(), 1.0)).collect();
     }
     values
         .iter()
@@ -85,16 +85,27 @@ fn normalize_scores(values: &HashMap<String, f32>) -> HashMap<String, f32> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn hybrid_rank(
     query: &str,
     bm25_results: Vec<MemorySearchResult>,
     vector_backend: Option<&Arc<dyn VectorBackend>>,
     embedder: Option<&Arc<dyn EmbeddingProvider>>,
-    load_memory: impl Fn(&str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<Memory>>> + Send>>
+    load_memory: impl Fn(
+            &str,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<Memory>>> + Send>>
         + Send
         + Sync,
-    get_neighbors: impl Fn(&str, u32) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<(Vec<Memory>, Vec<crate::types::Association>)>> + Send>,
+    get_neighbors: impl Fn(
+            &str,
+            u32,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<(Vec<Memory>, Vec<crate::types::Association>)>,
+                    > + Send,
+            >,
         > + Send
         + Sync,
     cfg: &HybridSearchConfig,
@@ -122,9 +133,9 @@ pub async fn hybrid_rank(
             .embed(&[query.to_string()])
             .await
             .map_err(|e| MemoryError::VectorDb(format!("Embedding failed: {e}")))?;
-        let vec = embedded
-            .get(0)
-            .ok_or_else(|| MemoryError::VectorDb("Embedding provider returned no vectors".into()))?;
+        let vec = embedded.first().ok_or_else(|| {
+            MemoryError::VectorDb("Embedding provider returned no vectors".into())
+        })?;
 
         let hits = vb.search(vec, cfg.vector_limit).await?;
         for h in hits {
@@ -150,7 +161,11 @@ pub async fn hybrid_rank(
         // Map target ids to relation multipliers.
         let mut rel_mult: HashMap<String, f32> = HashMap::new();
         for a in assocs {
-            let other = if a.source_id == seed_id { a.target_id } else { a.source_id };
+            let other = if a.source_id == seed_id {
+                a.target_id
+            } else {
+                a.source_id
+            };
             rel_mult.insert(other, a.relation_type.score_multiplier() as f32);
         }
 
@@ -174,13 +189,16 @@ pub async fn hybrid_rank(
     let vector_norm = normalize_scores(&vector_map);
     let graph_values: HashMap<String, f32> = parts
         .iter()
-        .filter_map(|(id, p)| (p.graph_raw > 0.0).then(|| (id.clone(), p.graph_raw)))
+        .filter(|(_, p)| p.graph_raw > 0.0)
+        .map(|(id, p)| (id.clone(), p.graph_raw))
         .collect();
     let graph_norm = normalize_scores(&graph_values);
 
     let mut scored: Vec<(ExplainedSearchResult, f32)> = Vec::new();
     for (id, p) in parts {
-        let Some(memory) = load_memory(&id).await? else { continue };
+        let Some(memory) = load_memory(&id).await? else {
+            continue;
+        };
         if memory.forgotten {
             continue;
         }
@@ -207,13 +225,19 @@ pub async fn hybrid_rank(
         };
 
         if bm25.is_some() {
-            explanation.notes.push("Matched BM25 full-text search".to_string());
+            explanation
+                .notes
+                .push("Matched BM25 full-text search".to_string());
         }
         if vector.is_some() {
-            explanation.notes.push("Matched semantic vector search".to_string());
+            explanation
+                .notes
+                .push("Matched semantic vector search".to_string());
         }
         if graph > 0.0 {
-            explanation.notes.push("Included via graph neighborhood expansion".to_string());
+            explanation
+                .notes
+                .push("Included via graph neighborhood expansion".to_string());
         }
 
         let score = cfg.weight_bm25 * bm25.unwrap_or(0.0)

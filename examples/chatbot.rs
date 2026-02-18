@@ -1,8 +1,6 @@
 //! Chatbot example showing conversational memory
 
-use goldfish::{
-    Memory, MemorySystem, MemoryType, SearchConfig, SearchMode,
-};
+use goldfish::{Memory, MemorySystem, MemoryType, SearchConfig, SearchMode};
 use std::io::{self, Write};
 
 /// Simple chatbot with memory
@@ -41,11 +39,9 @@ impl Chatbot {
             if !name.is_empty() {
                 self.user_name = Some(name.clone());
 
-                let identity = Memory::new(
-                    format!("User's name is {}", name),
-                    MemoryType::Identity,
-                )
-                .with_session_id(&self.session_id);
+                let identity =
+                    Memory::new(format!("User's name is {}", name), MemoryType::Identity)
+                        .with_session_id(&self.session_id);
 
                 self.memory.save(&identity).await?;
             }
@@ -83,8 +79,7 @@ impl Chatbot {
         let name = self.user_name.as_deref().unwrap_or("friend");
 
         // Simple rule-based responses (replace with LLM in production)
-        if user_input.to_lowercase().contains("hello") || user_input.to_lowercase().contains("hi")
-        {
+        if user_input.to_lowercase().contains("hello") || user_input.to_lowercase().contains("hi") {
             return format!("Hello {}! How can I help you today?", name);
         }
 
@@ -104,15 +99,15 @@ impl Chatbot {
         }
 
         if user_input.to_lowercase().contains("forget") {
-            return "I can forget things if you ask me to. Which memory should I forget?".to_string();
+            return "I can forget things if you ask me to. Which memory should I forget?"
+                .to_string();
         }
 
         // Default response using context
         if !context.is_empty() {
             return format!(
                 "Based on what I know about you, {}: {}. What else would you like to discuss?",
-                name,
-                context[0]
+                name, context[0]
             );
         }
 
@@ -143,8 +138,7 @@ impl Chatbot {
             self.memory.save(&pref).await?;
         }
 
-        if user_input.to_lowercase().contains("i am") || user_input.to_lowercase().contains("i'm")
-        {
+        if user_input.to_lowercase().contains("i am") || user_input.to_lowercase().contains("i'm") {
             let fact = Memory::new(user_input.to_string(), MemoryType::Fact)
                 .with_session_id(&self.session_id);
             self.memory.save(&fact).await?;

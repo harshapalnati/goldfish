@@ -2,9 +2,9 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use goldfish::MemoryCortex;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use goldfish::MemoryCortex;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod api;
@@ -26,7 +26,9 @@ async fn main() {
     tracing::info!("Initializing Goldfish Cortex...");
 
     // Initialize Cortex
-    let cortex = MemoryCortex::new("./goldfish_data").await.expect("Failed to initialize Cortex");
+    let cortex = MemoryCortex::new("./goldfish_data")
+        .await
+        .expect("Failed to initialize Cortex");
     let state = Arc::new(AppState {
         cortex: Arc::new(cortex),
     });
@@ -42,7 +44,7 @@ async fn main() {
     // Run Server
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     tracing::info!("Goldfish Server listening on {}", addr);
-    
+
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }

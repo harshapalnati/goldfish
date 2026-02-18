@@ -16,11 +16,8 @@
 
 use clap::{Parser, Subcommand, ValueEnum};
 use colored::*;
+use goldfish::{Memory, MemorySystem, MemoryType, RelationType, TemporalQuery};
 use std::path::PathBuf;
-use goldfish::{
-    Memory, MemorySystem, MemoryType, RelationType,
-    TemporalQuery,
-};
 
 #[derive(Parser)]
 #[command(name = "goldfish")]
@@ -278,47 +275,92 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Init { name } => cmd_init(name).await,
-        Commands::Add { content, memory_type, importance, tags } => {
-            cmd_add(&cli.data_dir, content, memory_type, importance, tags).await
+        Commands::Add {
+            content,
+            memory_type,
+            importance,
+            tags,
+        } => cmd_add(&cli.data_dir, content, memory_type, importance, tags).await,
+        Commands::Search {
+            query,
+            memory_type,
+            min_confidence,
+            limit,
+            temporal,
+        } => {
+            cmd_search(
+                &cli.data_dir,
+                query,
+                memory_type,
+                min_confidence,
+                limit,
+                temporal,
+            )
+            .await
         }
-        Commands::Search { query, memory_type, min_confidence, limit, temporal } => {
-            cmd_search(&cli.data_dir, query, memory_type, min_confidence, limit, temporal).await
-        }
-        Commands::List { memory_type, sort, limit, include_forgotten } => {
-            cmd_list(&cli.data_dir, memory_type, sort, limit, include_forgotten).await
-        }
+        Commands::List {
+            memory_type,
+            sort,
+            limit,
+            include_forgotten,
+        } => cmd_list(&cli.data_dir, memory_type, sort, limit, include_forgotten).await,
         Commands::Get { id, verbose } => cmd_get(&cli.data_dir, id, verbose).await,
-        Commands::Delete { id, force, permanent } => {
-            cmd_delete(&cli.data_dir, id, force, permanent).await
-        }
-        Commands::Update { id, content, importance } => {
-            cmd_update(&cli.data_dir, id, content, importance).await
-        }
-        Commands::Associate { source, target, relation } => {
-            cmd_associate(&cli.data_dir, source, target, relation).await
-        }
+        Commands::Delete {
+            id,
+            force,
+            permanent,
+        } => cmd_delete(&cli.data_dir, id, force, permanent).await,
+        Commands::Update {
+            id,
+            content,
+            importance,
+        } => cmd_update(&cli.data_dir, id, content, importance).await,
+        Commands::Associate {
+            source,
+            target,
+            relation,
+        } => cmd_associate(&cli.data_dir, source, target, relation).await,
         Commands::Stats => cmd_stats(&cli.data_dir).await,
         Commands::Maintenance { dry_run, verbose } => {
             cmd_maintenance(&cli.data_dir, dry_run, verbose).await
         }
-        Commands::Export { output, format, memory_type, include_associations } => {
-            cmd_export(&cli.data_dir, output, format, memory_type, include_associations).await
+        Commands::Export {
+            output,
+            format,
+            memory_type,
+            include_associations,
+        } => {
+            cmd_export(
+                &cli.data_dir,
+                output,
+                format,
+                memory_type,
+                include_associations,
+            )
+            .await
         }
-        Commands::Import { input, format, skip_duplicates } => {
-            cmd_import(&cli.data_dir, input, format, skip_duplicates).await
-        }
+        Commands::Import {
+            input,
+            format,
+            skip_duplicates,
+        } => cmd_import(&cli.data_dir, input, format, skip_duplicates).await,
     }
 }
 
 async fn cmd_init(name: Option<String>) -> anyhow::Result<()> {
     let project_name = name.unwrap_or_else(|| "my-goldfish".to_string());
-    
-    println!("{}", format!("Initializing Goldfish project: {}", project_name).bold().green());
-    
+
+    println!(
+        "{}",
+        format!("Initializing Goldfish project: {}", project_name)
+            .bold()
+            .green()
+    );
+
     std::fs::create_dir_all(&project_name)?;
     std::fs::create_dir_all(format!("{}/data", project_name))?;
     std::fs::create_dir_all(format!("{}/exports", project_name))?;
-    
+
     let config = format!(
         r#"# Goldfish Configuration
 project_name: {}
@@ -338,16 +380,16 @@ confidence:
 "#,
         project_name
     );
-    
+
     std::fs::write(format!("{}/goldfish.yaml", project_name), config)?;
-    
+
     println!("{}", "Created project directory".green());
     println!("{}", "Created goldfish.yaml config".green());
     println!();
     println!("Next steps:");
     println!("  cd {}", project_name);
     println!("  goldfish add \"Your first memory\"");
-    
+
     Ok(())
 }
 
@@ -359,20 +401,20 @@ async fn cmd_add(
     _tags: Vec<String>,
 ) -> anyhow::Result<()> {
     let memory_system = MemorySystem::new(data_dir).await?;
-    
+
     let mut memory = Memory::new(&content, memory_type.into());
-    
+
     if let Some(imp) = importance {
         memory = memory.with_importance(imp);
     }
-    
+
     memory_system.save(&memory).await?;
-    
+
     println!("{}", "Memory added successfully".green().bold());
     println!("  ID: {}", memory.id.cyan());
     println!("  Type: {:?}", memory.memory_type);
     println!("  Confidence: {:.2}", memory.confidence.score);
-    
+
     Ok(())
 }
 
@@ -385,33 +427,38 @@ async fn cmd_search(
     temporal: Option<String>,
 ) -> anyhow::Result<()> {
     let memory_system = MemorySystem::new(data_dir).await?;
-    
+
     let mut results = if let Some(temp) = temporal {
         let temporal_query = parse_temporal(&temp)?;
-        memory_system.search_temporal(&query, &temporal_query).await?
+        memory_system
+            .search_temporal(&query, &temporal_query)
+            .await?
     } else {
         memory_system.search(&query).await?
     };
-    
+
     if let Some(mt) = memory_type {
         let mt: MemoryType = mt.into();
         results.retain(|r| r.memory.memory_type == mt);
     }
-    
+
     if let Some(min_conf) = min_confidence {
         results.retain(|r| r.memory.confidence.score >= min_conf);
     }
-    
+
     results.truncate(limit);
-    
+
     if results.is_empty() {
         println!("{}", "No memories found".yellow());
         return Ok(());
     }
-    
-    println!("{}", format!("Found {} memories:", results.len()).bold().green());
+
+    println!(
+        "{}",
+        format!("Found {} memories:", results.len()).bold().green()
+    );
     println!();
-    
+
     for (i, result) in results.iter().enumerate() {
         let memory = &result.memory;
         let conf_color = if memory.confidence.score >= 0.8 {
@@ -421,7 +468,7 @@ async fn cmd_search(
         } else {
             "red"
         };
-        
+
         println!(
             "{}. {} ({} - {} - confidence: {:.2})",
             i + 1,
@@ -431,7 +478,7 @@ async fn cmd_search(
             memory.confidence.score.to_string().color(conf_color)
         );
     }
-    
+
     Ok(())
 }
 
@@ -443,21 +490,24 @@ async fn cmd_list(
     _include_forgotten: bool,
 ) -> anyhow::Result<()> {
     let memory_system = MemorySystem::new(data_dir).await?;
-    
+
     let memories = if let Some(mt) = memory_type {
         memory_system.get_by_type(mt.into(), limit as i64).await?
     } else {
         memory_system.get_last_days(3650).await?
     };
-    
+
     if memories.is_empty() {
         println!("{}", "No memories found".yellow());
         return Ok(());
     }
-    
-    println!("{}", format!("Showing {} memories:", memories.len().min(limit)).bold());
+
+    println!(
+        "{}",
+        format!("Showing {} memories:", memories.len().min(limit)).bold()
+    );
     println!();
-    
+
     for memory in memories.iter().take(limit) {
         let status_icon = if memory.confidence.score >= 0.8 {
             "*".green()
@@ -466,7 +516,7 @@ async fn cmd_list(
         } else {
             "?".red()
         };
-        
+
         println!(
             "{} {} {} | {:.2} | {}",
             status_icon,
@@ -476,15 +526,15 @@ async fn cmd_list(
             memory.content.chars().take(50).collect::<String>()
         );
     }
-    
+
     Ok(())
 }
 
 async fn cmd_get(data_dir: &PathBuf, id: String, verbose: bool) -> anyhow::Result<()> {
     let memory_system = MemorySystem::new(data_dir).await?;
-    
+
     let memory = memory_system.load(&id).await?;
-    
+
     match memory {
         Some(m) => {
             println!("{}", "Memory Details".bold().underline());
@@ -492,14 +542,20 @@ async fn cmd_get(data_dir: &PathBuf, id: String, verbose: bool) -> anyhow::Resul
             println!("  Content:     {}", m.content);
             println!("  Type:        {:?}", m.memory_type);
             println!("  Importance:  {:.2}", m.importance);
-            println!("  Confidence:  {:.2} ({})", 
-                m.confidence.score,
-                m.confidence.status
+            println!(
+                "  Confidence:  {:.2} ({})",
+                m.confidence.score, m.confidence.status
             );
-            println!("  Created:     {}", m.created_at.format("%Y-%m-%d %H:%M:%S"));
-            println!("  Updated:     {}", m.updated_at.format("%Y-%m-%d %H:%M:%S"));
+            println!(
+                "  Created:     {}",
+                m.created_at.format("%Y-%m-%d %H:%M:%S")
+            );
+            println!(
+                "  Updated:     {}",
+                m.updated_at.format("%Y-%m-%d %H:%M:%S")
+            );
             println!("  Accessed:    {} times", m.access_count);
-            
+
             if verbose {
                 let associations = memory_system.get_associations(&m.id).await?;
                 if !associations.is_empty() {
@@ -514,7 +570,7 @@ async fn cmd_get(data_dir: &PathBuf, id: String, verbose: bool) -> anyhow::Resul
             println!("{}", format!("Memory '{}' not found", id).red());
         }
     }
-    
+
     Ok(())
 }
 
@@ -525,17 +581,20 @@ async fn cmd_delete(
     permanent: bool,
 ) -> anyhow::Result<()> {
     let memory_system = MemorySystem::new(data_dir).await?;
-    
+
     if !force {
         let memory = memory_system.load(&id).await?;
         match memory {
             Some(m) => {
-                println!("About to delete: {}", m.content.chars().take(50).collect::<String>());
+                println!(
+                    "About to delete: {}",
+                    m.content.chars().take(50).collect::<String>()
+                );
                 println!("Are you sure? (yes/no)");
-                
+
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input)?;
-                
+
                 if input.trim() != "yes" {
                     println!("Cancelled");
                     return Ok(());
@@ -547,7 +606,7 @@ async fn cmd_delete(
             }
         }
     }
-    
+
     if permanent {
         memory_system.delete(&id).await?;
         println!("{}", "Memory permanently deleted".green());
@@ -555,7 +614,7 @@ async fn cmd_delete(
         memory_system.forget(&id).await?;
         println!("{}", "Memory forgotten (soft delete)".green());
     }
-    
+
     Ok(())
 }
 
@@ -566,7 +625,7 @@ async fn cmd_update(
     importance: Option<f32>,
 ) -> anyhow::Result<()> {
     let memory_system = MemorySystem::new(data_dir).await?;
-    
+
     let mut memory = match memory_system.load(&id).await? {
         Some(m) => m,
         None => {
@@ -574,19 +633,19 @@ async fn cmd_update(
             return Ok(());
         }
     };
-    
+
     if let Some(c) = content {
         memory.content = c;
     }
-    
+
     if let Some(imp) = importance {
         memory.importance = imp;
     }
-    
+
     memory_system.update(&memory).await?;
-    
+
     println!("{}", "Memory updated successfully".green().bold());
-    
+
     Ok(())
 }
 
@@ -597,34 +656,32 @@ async fn cmd_associate(
     relation: CliRelationType,
 ) -> anyhow::Result<()> {
     let memory_system = MemorySystem::new(data_dir).await?;
-    
-    memory_system.associate(&source, &target, relation.into()).await?;
-    
+
+    memory_system
+        .associate(&source, &target, relation.into())
+        .await?;
+
     println!("{}", "Association created".green());
-    
+
     Ok(())
 }
 
-async fn cmd_maintenance(
-    data_dir: &PathBuf,
-    dry_run: bool,
-    verbose: bool,
-) -> anyhow::Result<()> {
+async fn cmd_maintenance(data_dir: &PathBuf, dry_run: bool, verbose: bool) -> anyhow::Result<()> {
     let _memory_system = MemorySystem::new(data_dir).await?;
-    
+
     if dry_run {
         println!("{}", "Dry run - no changes will be made".yellow());
     }
-    
+
     println!("{}", "Running maintenance...".bold());
-    
+
     if verbose {
         println!("  Checking memory decay...");
         println!("  Checking for prunable memories...");
     }
-    
+
     println!("{}", "Maintenance complete".green());
-    
+
     Ok(())
 }
 
@@ -636,17 +693,20 @@ async fn cmd_export(
     include_associations: bool,
 ) -> anyhow::Result<()> {
     let _memory_system = MemorySystem::new(data_dir).await?;
-    
-    println!("{}", format!("Exporting memories to {:?}...", output).bold());
-    
+
+    println!(
+        "{}",
+        format!("Exporting memories to {:?}...", output).bold()
+    );
+
     println!("  Format: {:?}", format);
     println!("  Include associations: {}", include_associations);
     if let Some(mt) = memory_type {
         println!("  Filter: {:?}", mt);
     }
-    
+
     println!("{}", "Export complete".green());
-    
+
     Ok(())
 }
 
@@ -657,42 +717,43 @@ async fn cmd_import(
     skip_duplicates: bool,
 ) -> anyhow::Result<()> {
     let _memory_system = MemorySystem::new(data_dir).await?;
-    
+
     println!("{}", format!("Importing from {:?}...", input).bold());
-    
+
     println!("  Format: {:?}", format);
     println!("  Skip duplicates: {}", skip_duplicates);
-    
+
     println!("{}", "Import complete".green());
-    
+
     Ok(())
 }
 
 async fn cmd_stats(data_dir: &PathBuf) -> anyhow::Result<()> {
     let memory_system = MemorySystem::new(data_dir).await?;
-    
+
     println!("{}", "Goldfish Statistics".bold().underline());
-    
+
     let memories = memory_system.get_last_days(3650).await?;
-    
+
     println!("  Total memories: {}", memories.len());
-    
+
     use std::collections::HashMap;
     let mut by_type: HashMap<MemoryType, usize> = HashMap::new();
     for m in &memories {
         *by_type.entry(m.memory_type).or_insert(0) += 1;
     }
-    
+
     println!("\n{}", "By Type:".bold());
     for (mem_type, count) in by_type {
         println!("  {:?}: {}", mem_type, count);
     }
-    
+
     if !memories.is_empty() {
-        let avg_confidence: f32 = memories.iter().map(|m| m.confidence.score).sum::<f32>() / memories.len() as f32;
+        let avg_confidence: f32 =
+            memories.iter().map(|m| m.confidence.score).sum::<f32>() / memories.len() as f32;
         println!("\n  Average confidence: {:.2}", avg_confidence);
     }
-    
+
     Ok(())
 }
 
@@ -705,13 +766,13 @@ fn parse_temporal(temp: &str) -> anyhow::Result<TemporalQuery> {
         "last_month" => TemporalQuery::this_month(),
         _ => {
             if temp.starts_with("last_") && temp.ends_with("_days") {
-                let num: i64 = temp[5..temp.len()-5].parse()?;
+                let num: i64 = temp[5..temp.len() - 5].parse()?;
                 TemporalQuery::last_days(num)
             } else {
                 TemporalQuery::today()
             }
         }
     };
-    
+
     Ok(query)
 }

@@ -1,67 +1,67 @@
 //! # Goldfish - Agentic Memory Cortex for AI Agents
 
-pub mod error;
-pub mod types;
-pub mod store;
-pub mod search;
-pub mod maintenance;
-pub mod confidence;
-pub mod temporal;
-pub mod pulses;
-pub mod synthesis;
-pub mod versioning;
 pub mod cache;
+pub mod confidence;
 pub mod cortex;
 pub mod embedding;
+pub mod error;
+pub mod eval_harness;
+pub mod hybrid_retrieval;
+pub mod maintenance;
+pub mod pulses;
+pub mod search;
 pub mod storage_backend;
+pub mod store;
+pub mod synthesis;
+pub mod temporal;
+pub mod types;
 pub mod vector_backend;
 pub mod vector_search;
-pub mod hybrid_retrieval;
-pub mod eval_harness;
+pub mod versioning;
 
+pub use cache::{
+    CacheConfig, CacheConfigBuilder, CacheKey, CacheManager, CacheStats, CachedMemoryOperations,
+    L1Cache,
+};
+pub use confidence::{
+    ConfidenceConfig, ConfidenceFactors, ConfidenceTier, MemoryConfidence, SourceReliability,
+    VerificationStatus,
+};
+pub use cortex::{
+    ContextWindow, Experience, ImportanceCalculator, ImportanceWeights, MemoryCortex,
+    MemorySummary, WorkingMemory, WorkingMemoryItem,
+};
+pub use embedding::{EmbeddingProvider, HashEmbeddingProvider};
 pub use error::{MemoryError, Result};
+pub use eval_harness::{
+    print_results, run_standard_eval, BenchmarkResults, EvalHarness, RetrievalTestCase,
+};
+pub use hybrid_retrieval::{ExplainedSearchResult, HybridSearchConfig, RetrievalExplanation};
+pub use maintenance::{
+    run_maintenance, MaintenanceConfig, MaintenanceConfigBuilder, MaintenanceReport,
+};
+pub use pulses::{
+    pulse, ChangeType, GoldfishPulses, Pulse, PulseConfig, PulseFilter, PulseStats, PulseType,
+};
+pub use search::{MemorySearch, SearchConfig, SearchMode, SearchSort};
+pub use storage_backend::StorageBackend;
+pub use store::{MemoryStore, SortOrder};
+pub use synthesis::{Insight, InsightType, SynthesisConfig, SynthesisEngine};
+pub use temporal::{
+    Episode, TemporalConfig, TemporalMode, TemporalPreset, TemporalQuery, TemporalSearchResult,
+};
 pub use types::{
     Association, CreateAssociationInput, CreateMemoryInput, Memory, MemoryId, MemorySearchResult,
     MemoryType, RelationType, SessionId,
 };
-pub use store::{MemoryStore, SortOrder};
-pub use search::{MemorySearch, SearchConfig, SearchMode, SearchSort};
-pub use maintenance::{MaintenanceConfig, MaintenanceReport, run_maintenance, MaintenanceConfigBuilder};
-pub use confidence::{
-    MemoryConfidence, ConfidenceFactors, SourceReliability,
-    VerificationStatus, ConfidenceTier, ConfidenceConfig
-};
-pub use temporal::{
-    TemporalQuery, TemporalMode, TemporalPreset,
-    Episode, TemporalConfig, TemporalSearchResult
-};
-pub use pulses::{
-    Pulse, PulseFilter, PulseType, ChangeType,
-    GoldfishPulses, PulseConfig, PulseStats, pulse
-};
-pub use synthesis::{
-    SynthesisEngine, SynthesisConfig, Insight, InsightType
-};
-pub use versioning::{
-    VersionId, MemoryVersion, VersionAuthor, VersioningConfig, VersioningConfigBuilder,
-    MemoryDiff, FieldChange, FieldChangeKind, ChangeType as VersionChangeType, StorageMode,
-    MemoryBranch, VersionConflict, ConflictResolution, VersioningStats,
-    VersioningEngine, VersionRepository
-};
-pub use cache::{
-    CacheKey, CacheStats, CacheConfig, CacheConfigBuilder,
-    CacheManager, L1Cache, CachedMemoryOperations,
-};
-pub use cortex::{
-    MemoryCortex, WorkingMemory, WorkingMemoryItem, Experience,
-    ImportanceCalculator, ImportanceWeights, ContextWindow, MemorySummary,
-};
-pub use embedding::{EmbeddingProvider, HashEmbeddingProvider};
-pub use storage_backend::StorageBackend;
 pub use vector_backend::{VectorBackend, VectorSearchHit};
-pub use vector_search::{VectorIndex, VectorSearchConfig, generate_embedding};
-pub use hybrid_retrieval::{HybridSearchConfig, ExplainedSearchResult, RetrievalExplanation};
-pub use eval_harness::{EvalHarness, BenchmarkResults, RetrievalTestCase, run_standard_eval, print_results};
+pub use vector_search::{generate_embedding, VectorIndex, VectorSearchConfig};
+pub use versioning::{
+    ChangeType as VersionChangeType, ConflictResolution, FieldChange, FieldChangeKind,
+    MemoryBranch, MemoryDiff, MemoryVersion, StorageMode, VersionAuthor, VersionConflict,
+    VersionId, VersionRepository, VersioningConfig, VersioningConfigBuilder, VersioningEngine,
+    VersioningStats,
+};
 
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::SqlitePool;
@@ -127,9 +127,11 @@ impl MemorySystem {
         self.search.index_memory(memory)?;
 
         if let (Some(vector), Some(embedder)) = (&self.vector, &self.embedder) {
-            let vectors = embedder.embed(&[memory.content.clone()]).await
+            let vectors = embedder
+                .embed(std::slice::from_ref(&memory.content))
+                .await
                 .map_err(|e| MemoryError::VectorDb(format!("Embedding failed: {e}")))?;
-            if let Some(v) = vectors.get(0) {
+            if let Some(v) = vectors.first() {
                 vector.upsert(&memory.id, v, None).await?;
             }
         }
@@ -148,9 +150,11 @@ impl MemorySystem {
         self.search.index_memory(memory)?;
 
         if let (Some(vector), Some(embedder)) = (&self.vector, &self.embedder) {
-            let vectors = embedder.embed(&[memory.content.clone()]).await
+            let vectors = embedder
+                .embed(std::slice::from_ref(&memory.content))
+                .await
                 .map_err(|e| MemoryError::VectorDb(format!("Embedding failed: {e}")))?;
-            if let Some(v) = vectors.get(0) {
+            if let Some(v) = vectors.first() {
                 vector.upsert(&memory.id, v, None).await?;
             }
         }
@@ -270,10 +274,12 @@ impl MemorySystem {
         cfg: &HybridSearchConfig,
         filter_type: Option<MemoryType>,
     ) -> Result<Vec<ExplainedSearchResult>> {
-        let mut bm25_cfg = SearchConfig::default();
-        bm25_cfg.mode = SearchMode::FullText;
-        bm25_cfg.max_results = cfg.bm25_limit.max(cfg.max_results);
-        bm25_cfg.memory_type = filter_type;
+        let bm25_cfg = SearchConfig {
+            mode: SearchMode::FullText,
+            max_results: cfg.bm25_limit.max(cfg.max_results),
+            memory_type: filter_type,
+            ..SearchConfig::default()
+        };
 
         let bm25 = self.search.search(query, &bm25_cfg).await?;
 
