@@ -56,48 +56,70 @@ Unlike simple key-value stores, Goldfish understands **semantics**, **relationsh
 </tr>
 </table>
 
-## 🚀 Quick Start
+## 🚀 Quick Start (5 Minutes)
 
-### Installation
+### 1. Start the Server
 
 ```bash
-# Add to Cargo.toml
-[dependencies]
-goldfish = "0.1"
-tokio = { version = "1", features = ["full"] }
+git clone https://github.com/harshapalnati/goldfish.git
+cd goldfish
+cargo run --example server --features dashboard
 ```
 
-### Basic Usage
+Server starts on `http://localhost:3000` ✅
 
-```rust
-use goldfish::{Memory, MemorySystem, MemoryType};
+### 2. Store & Search Memories
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Initialize storage
-    let memory = MemorySystem::new("./goldfish_data").await?;
-    
-    // Store a memory
-    let fact = Memory::new(
-        "Rust is memory-safe without garbage collection",
-        MemoryType::Fact
-    ).with_importance(0.9);
-    
-    memory.save(&fact).await?;
-    
-    // Retrieve with hybrid search
-    let results = memory.search("memory safety").await?;
-    for r in results {
-        println!("[{}] {} (score: {:.2})", 
-            r.memory.memory_type, 
-            r.memory.content,
-            r.score
-        );
-    }
-    
-    Ok(())
-}
+```bash
+# Store a memory
+curl -X POST http://localhost:3000/v1/memory \
+  -H "Content-Type: application/json" \
+  -d '{"content": "User prefers dark mode", "type": "preference", "importance": 0.9}'
+
+# Search
+curl -X POST http://localhost:3000/v1/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "user preferences", "limit": 5}'
+
+# Build LLM context
+curl -X POST http://localhost:3000/v1/context \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What does the user prefer?", "token_budget": 500}'
 ```
+
+### 3. Python Client
+
+```python
+# pip install requests
+import requests
+
+class GoldfishClient:
+    def __init__(self, url="http://localhost:3000"):
+        self.url = url
+    
+    def remember(self, content, type="fact", importance=None):
+        data = {"content": content, "type": type}
+        if importance:
+            data["importance"] = importance
+        return requests.post(f"{self.url}/v1/memory", json=data).json()
+    
+    def recall(self, query, limit=10):
+        return requests.post(f"{self.url}/v1/search", 
+                           json={"query": query, "limit": limit}).json()
+    
+    def context(self, query, token_budget=2000):
+        return requests.post(f"{self.url}/v1/context",
+                           json={"query": query, "token_budget": token_budget}).json()
+
+# Usage
+client = GoldfishClient()
+client.remember("User likes Python", "preference", importance=0.9)
+results = client.recall("python")
+ctx = client.context("What programming language?")
+print(ctx["context"])  # Ready for LLM prompt!
+```
+
+**[📖 Full Quick Start Guide →](QUICKSTART.md)**
 
 ### Agent-Facing API
 

@@ -53,6 +53,11 @@ path = "examples/agent.rs"
 name = "comprehensive"
 path = "examples/comprehensive.rs"
 
+[[example]]
+name = "server"
+path = "examples/server.rs"
+required-features = ["dashboard"]
+
 [[bin]]
 name = "goldfish"
 path = "src/cli.rs"
