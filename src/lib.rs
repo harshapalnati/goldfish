@@ -12,6 +12,11 @@ pub mod synthesis;
 pub mod versioning;
 pub mod cache;
 pub mod cortex;
+pub mod embedding;
+pub mod storage_backend;
+pub mod vector_backend;
+pub mod hybrid_retrieval;
+pub mod eval_harness;
 
 pub use error::{MemoryError, Result};
 pub use types::{
@@ -50,6 +55,11 @@ pub use cortex::{
     MemoryCortex, WorkingMemory, WorkingMemoryItem, Experience,
     ImportanceCalculator, ImportanceWeights, ContextWindow, MemorySummary,
 };
+pub use embedding::{EmbeddingProvider, HashEmbeddingProvider};
+pub use storage_backend::StorageBackend;
+pub use vector_backend::{VectorBackend, VectorSearchHit};
+pub use hybrid_retrieval::{HybridSearchConfig, ExplainedSearchResult, RetrievalExplanation};
+pub use eval_harness::{EvalHarness, BenchmarkResults, RetrievalTestCase, run_standard_eval, print_results};
 
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::SqlitePool;
@@ -63,6 +73,8 @@ pub struct MemorySystem {
     search: MemorySearch,
     data_dir: std::path::PathBuf,
     pulses: Arc<GoldfishPulses>,
+    vector: Option<Arc<dyn VectorBackend>>,
+    embedder: Option<Arc<dyn EmbeddingProvider>>,
 }
 
 impl std::fmt::Debug for MemorySystem {
@@ -102,6 +114,8 @@ impl MemorySystem {
             search,
             data_dir,
             pulses,
+            vector: None,
+            embedder: None,
         })
     }
 
@@ -109,6 +123,15 @@ impl MemorySystem {
     pub async fn save(&self, memory: &Memory) -> Result<()> {
         self.store.save(memory).await?;
         self.search.index_memory(memory)?;
+
+        if let (Some(vector), Some(embedder)) = (&self.vector, &self.embedder) {
+            let vectors = embedder.embed(&[memory.content.clone()]).await
+                .map_err(|e| MemoryError::VectorDb(format!("Embedding failed: {e}")))?;
+            if let Some(v) = vectors.get(0) {
+                vector.upsert(&memory.id, v, None).await?;
+            }
+        }
+
         Ok(())
     }
 
@@ -121,6 +144,15 @@ impl MemorySystem {
     pub async fn update(&self, memory: &Memory) -> Result<()> {
         self.store.update(memory).await?;
         self.search.index_memory(memory)?;
+
+        if let (Some(vector), Some(embedder)) = (&self.vector, &self.embedder) {
+            let vectors = embedder.embed(&[memory.content.clone()]).await
+                .map_err(|e| MemoryError::VectorDb(format!("Embedding failed: {e}")))?;
+            if let Some(v) = vectors.get(0) {
+                vector.upsert(&memory.id, v, None).await?;
+            }
+        }
+
         Ok(())
     }
 
@@ -128,6 +160,11 @@ impl MemorySystem {
     pub async fn delete(&self, id: &str) -> Result<()> {
         self.store.delete(id).await?;
         self.search.delete_memory(id)?;
+
+        if let Some(vector) = &self.vector {
+            vector.delete(id).await?;
+        }
+
         Ok(())
     }
 
@@ -208,6 +245,55 @@ impl MemorySystem {
     /// Get the pulses system for subscribing to events
     pub fn pulses(&self) -> &GoldfishPulses {
         &self.pulses
+    }
+
+    /// Attach a vector backend and embedding provider to enable hybrid retrieval.
+    ///
+    /// This does not change the existing API surface; it only enables the additional
+    /// `hybrid_search` method and keeps vectors up-to-date on save/update/delete.
+    pub fn with_vector_backend(
+        mut self,
+        vector: Arc<dyn VectorBackend>,
+        embedder: Arc<dyn EmbeddingProvider>,
+    ) -> Self {
+        self.vector = Some(vector);
+        self.embedder = Some(embedder);
+        self
+    }
+
+    /// Hybrid retrieval: BM25 (Tantivy) + vector + recency + importance + graph neighborhood.
+    pub async fn hybrid_search(
+        &self,
+        query: &str,
+        cfg: &HybridSearchConfig,
+        filter_type: Option<MemoryType>,
+    ) -> Result<Vec<ExplainedSearchResult>> {
+        let mut bm25_cfg = SearchConfig::default();
+        bm25_cfg.mode = SearchMode::FullText;
+        bm25_cfg.max_results = cfg.bm25_limit.max(cfg.max_results);
+        bm25_cfg.memory_type = filter_type;
+
+        let bm25 = self.search.search(query, &bm25_cfg).await?;
+
+        hybrid_retrieval::hybrid_rank(
+            query,
+            bm25,
+            self.vector.as_ref(),
+            self.embedder.as_ref(),
+            |id| {
+                let store = Arc::clone(&self.store);
+                let id = id.to_string();
+                Box::pin(async move { store.load(&id).await })
+            },
+            |id, depth| {
+                let store = Arc::clone(&self.store);
+                let id = id.to_string();
+                Box::pin(async move { store.get_neighbors(&id, depth, &[]).await })
+            },
+            cfg,
+            filter_type,
+        )
+        .await
     }
 
     /// Search memories by time range
