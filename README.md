@@ -2,11 +2,11 @@
 
 ![Goldfish Banner](https://raw.githubusercontent.com/harshapalnati/goldfish/main/assets/banner.png)
 
-# Goldfish Memory API
+# Goldfish
 
-### The Memory System AI Agents Deserve
+### Give Your AI Agent a Memory
 
-**🚀 API-First** • **🔌 Language Agnostic** • **⚡ Production Ready**
+**🧠 Smart Recall** • **🔍 Hybrid Search** • **🎯 Context Aware**
 
 [![API](https://img.shields.io/badge/API-REST-blue)](http://localhost:3000)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-green)](openapi.yaml)
@@ -15,7 +15,7 @@
 [![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%2FMIT-blue.svg)](LICENSE)
 
-[🚀 Quick Start](#quick-start) • [📖 API Docs](openapi.yaml) • [💻 SDKs](#sdks) • [🌟 Star History](#star-history)
+[🚀 Quick Start](#quick-start) • [📖 API Docs](openapi.yaml) • [💻 Examples](#quick-integration) • [🌟 Star History](#star-history)
 
 </div>
 
@@ -101,55 +101,43 @@ curl -X POST http://localhost:3000/v1/context \
 
 ---
 
-## 💻 SDKs
+## 💻 Quick Integration
 
 ### Python
 
 ```python
 from goldfish_client import GoldfishClient
 
-client = GoldfishClient()
+client = GoldfishClient("http://localhost:3000")
 
-# Store
-client.remember(
-    "User likes Python",
-    type="preference",
-    importance=0.9
-)
+# Store memory
+client.remember("User prefers dark mode", type="preference", importance=0.9)
 
 # Search
-results = client.recall("programming", limit=5)
+results = client.recall("user preferences", limit=5)
 
-# Build context
-ctx = client.context("What does user prefer?")
-print(ctx["context"])  # Ready for LLM prompt!
+# Build LLM context
+context = client.context("What does user prefer?", token_budget=500)
+print(context["context"])  # Ready for your LLM prompt!
 ```
-
-**[📄 Full Python Client →](examples/goldfish_client.py)**
 
 ### JavaScript
 
 ```javascript
 import GoldfishClient from './js_client.js';
 
-const client = new GoldfishClient();
+const client = new GoldfishClient('http://localhost:3000');
 
-// Store
-await client.remember(
-  'User likes JavaScript',
-  'preference',
-  0.9
-);
+// Store memory
+await client.remember('User prefers dark mode', 'preference', 0.9);
 
 // Search
-const results = await client.recall('programming');
+const results = await client.recall('user preferences', 5);
 
-// Context
-const ctx = await client.context('What does user prefer?');
-console.log(ctx.context); // Ready for LLM!
+// Build context
+const ctx = await client.context('What does user prefer?', 500);
+console.log(ctx.context); // Ready for your LLM!
 ```
-
-**[📄 Full JavaScript Client →](examples/js_client.js)**
 
 ### Rust
 
@@ -160,12 +148,12 @@ let cortex = MemoryCortex::new("./data").await?;
 
 // Store
 cortex.remember(&Memory::new(
-    "User likes Rust",
+    "User prefers dark mode",
     MemoryType::Preference
 )).await?;
 
 // Search
-let results = cortex.recall("programming", 5).await?;
+let results = cortex.recall("user preferences", 5).await?;
 
 // Context
 let context = cortex.get_full_context(10).await?;
@@ -189,15 +177,15 @@ let context = cortex.get_full_context(10).await?;
 
 ---
 
-## ✨ Why API-First?
+## ✨ Why Goldfish?
 
 | Feature | Benefit |
 |---------|---------|
-| **🌐 Language Agnostic** | Use Python, JavaScript, Rust, Go, or any language |
-| **🔧 Framework Independent** | Works with LangChain, LlamaIndex, CrewAI, or custom agents |
-| **⚡ Zero Dependencies** | Just HTTP calls - no heavy SDKs needed |
-| **🔒 Secure by Default** | Run locally or deploy to your infrastructure |
-| **📈 Scales With You** | SQLite locally → PostgreSQL in production |
+| **🌐 Works Everywhere** | Python, JavaScript, Rust, Go, or any language |
+| **🔧 Framework Agnostic** | LangChain, LlamaIndex, CrewAI, or custom agents |
+| **⚡ Zero Lock-in** | Simple HTTP calls, no heavy dependencies |
+| **🔒 Secure** | Run locally or deploy to your infrastructure |
+| **📈 Production Ready** | SQLite locally → PostgreSQL in production |
 
 ---
 
