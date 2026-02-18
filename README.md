@@ -1,6 +1,6 @@
 <div align="center">
 
-![Goldfish Banner](https://raw.githubusercontent.com/harshapalnati/goldfish/main/assets/banner.svg)
+![Goldfish Banner](https://raw.githubusercontent.com/harshapalnati/goldfish/main/assets/banner.png)
 
 # Goldfish
 
@@ -270,20 +270,6 @@ cargo build --release
 ## 🌟 Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=harshapalnati/goldfish&type=Date)](https://star-history.com/#harshapalnati/goldfish&Date)
-
----
-
-## 📊 Comparison
-
-| Feature | Spacebot | Goldfish |
-|---------|----------|----------|
-| **API** | ❌ No | ✅ REST API |
-| **Hybrid Search** | ❌ Text only | ✅ BM25 + Vector |
-| **Working Memory** | ❌ No | ✅ LRU Cache |
-| **Episodes** | ❌ No | ✅ Grouped experiences |
-| **Context Builder** | ❌ Manual | ✅ Automatic with citations |
-| **Multi-language** | ❌ No | ✅ Any language via HTTP |
-| **Explainability** | ❌ No | ✅ "Why retrieved" |
 
 ---
 
