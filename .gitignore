@@ -62,9 +62,6 @@ coverage/
 docs/_build/
 site/
 
-# Vendored proto files (local)
-protobuf_include/
-
 # Python virtual environment (for scripts)
 venv/
 env/
