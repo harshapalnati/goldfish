@@ -1,10 +1,8 @@
+# Goldfish — Give Your AI Agent a Memory
+
 <div align="center">
 
-![Goldfish Banner](https://raw.githubusercontent.com/harshapalnati/goldfish/main/assets/banner.png)
-
-# GOLDFISH
-
-## Give Your AI Agent a Memory
+<img src="https://raw.githubusercontent.com/harshapalnati/goldfish/main/assets/banner.png" alt="Goldfish Banner" width="400">
 
 **REMEMBER! RECALL! RETRIEVE!**
 
