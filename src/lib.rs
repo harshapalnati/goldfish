@@ -10,6 +10,7 @@ pub mod hybrid_retrieval;
 pub mod maintenance;
 pub mod pulses;
 pub mod search;
+pub mod semantic_eval;
 pub mod storage_backend;
 pub mod store;
 pub mod synthesis;
