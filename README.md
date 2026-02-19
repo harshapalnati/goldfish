@@ -301,7 +301,7 @@ Commit list: <https://github.com/harshapalnati/goldfish/commits/main>
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=harshapalnati/goldfish&type=Date)](https://star-history.com/#harshapalnati/goldfish&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=harshapalnati/goldfish&type=date&legend=top-left)](https://www.star-history.com/#harshapalnati/goldfish&type=date&legend=top-left)
 
 ---
 
