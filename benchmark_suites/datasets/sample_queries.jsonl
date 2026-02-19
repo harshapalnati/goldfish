@@ -1,0 +1,5 @@
+{"query_id":"q1","query":"concise user preference for answers","relevant_ids":["m1","m6"],"relevance":{"m1":3,"m6":2}}
+{"query_id":"q2","query":"memory search goal with lancedb","relevant_ids":["m2"],"relevance":{"m2":3}}
+{"query_id":"q3","query":"tokio async runtime in rust","relevant_ids":["m3"],"relevance":{"m3":3}}
+{"query_id":"q4","query":"fix retrieval issue before release","relevant_ids":["m4"],"relevance":{"m4":3}}
+{"query_id":"q5","query":"hybrid recall lexical and vector","relevant_ids":["m5"],"relevance":{"m5":3}}

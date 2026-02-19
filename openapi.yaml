@@ -1,0 +1,312 @@
+openapi: 3.0.0
+info:
+  title: Goldfish Memory API
+  description: |
+    Production-grade memory cortex for AI agents.
+    
+    ## Features
+    - **Hybrid Search**: BM25 + Vector + Importance + Recency
+    - **Working Memory**: Fast LRU cache for active context
+    - **Episodes**: Group memories into experiences
+    - **Context Builder**: Token-budgeted with citations
+    
+    ## Quick Start
+    ```bash
+    curl -X POST http://localhost:3000/v1/memory \
+      -H "Content-Type: application/json" \
+      -d '{"content": "User likes Rust", "type": "preference"}'
+    ```
+  version: 1.0.0
+  contact:
+    name: Harsha Palnati
+    email: harshapalnati@gmail.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://api.goldfish.dev/v1
+    description: Production server (coming soon)
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Check if the API is running
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  version:
+                    type: string
+                    example: "1.0.0"
+
+  /v1/memory:
+    post:
+      summary: Store a memory
+      description: Create a new memory in the cortex
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreMemoryRequest'
+      responses:
+        '200':
+          description: Memory stored successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryResponse'
+        '400':
+          description: Invalid request
+        '500':
+          description: Server error
+
+  /v1/memory/{id}:
+    get:
+      summary: Get a memory
+      description: Retrieve a memory by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Memory ID
+      responses:
+        '200':
+          description: Memory found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryResponse'
+        '404':
+          description: Memory not found
+
+  /v1/search:
+    post:
+      summary: Search memories
+      description: Hybrid search (BM25 + Vector + Importance + Recency)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SearchResult'
+
+  /v1/context:
+    post:
+      summary: Build LLM context
+      description: Generate token-budgeted context with citations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContextRequest'
+      responses:
+        '200':
+          description: Context built successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextResponse'
+
+  /v1/episodes/start:
+    post:
+      summary: Start an episode
+      description: Begin a new episodic experience
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartEpisodeRequest'
+      responses:
+        '200':
+          description: Episode started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpisodeResponse'
+
+  /v1/episodes/{id}/end:
+    post:
+      summary: End an episode
+      description: End the current episodic experience
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Episode ID
+      responses:
+        '200':
+          description: Episode ended
+
+components:
+  schemas:
+    StoreMemoryRequest:
+      type: object
+      required:
+        - content
+        - type
+      properties:
+        content:
+          type: string
+          description: The memory content
+          example: "User prefers dark mode in all applications"
+        type:
+          type: string
+          enum: [fact, preference, goal, decision, event, identity]
+          description: Type of memory
+          example: "preference"
+        importance:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Importance score (0.0 - 1.0)
+          example: 0.9
+        source:
+          type: string
+          description: Source of the memory
+          example: "user-conversation"
+
+    MemoryResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "mem_abc123"
+        content:
+          type: string
+          example: "User prefers dark mode in all applications"
+        type:
+          type: string
+          example: "Preference"
+        importance:
+          type: number
+          example: 0.9
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-02-18T10:30:00Z"
+
+    SearchRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: Search query
+          example: "user preferences"
+        limit:
+          type: integer
+          default: 10
+          description: Maximum results to return
+          example: 5
+
+    SearchResult:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "mem_abc123"
+        content:
+          type: string
+          example: "User prefers dark mode in all applications"
+        type:
+          type: string
+          example: "Preference"
+        score:
+          type: number
+          description: Relevance score (0.0 - 1.0)
+          example: 0.95
+        why:
+          type: string
+          description: Explanation of why this was retrieved
+          example: "Matched query 'user preferences' with score 0.95"
+
+    ContextRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: Context query
+          example: "What does the user prefer?"
+        token_budget:
+          type: integer
+          default: 2000
+          description: Maximum tokens for context
+          example: 500
+
+    ContextResponse:
+      type: object
+      properties:
+        context:
+          type: string
+          description: Formatted context ready for LLM
+          example: "## Relevant Context\n1 [Preference] User prefers dark mode..."
+        tokens_used:
+          type: integer
+          example: 12
+        memories_included:
+          type: integer
+          example: 1
+        citations:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              content:
+                type: string
+              type:
+                type: string
+
+    StartEpisodeRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          example: "User Onboarding"
+        context:
+          type: string
+          example: "First-time setup session"
+
+    EpisodeResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "ep_xyz789"
+        title:
+          type: string
+          example: "User Onboarding"
+        started_at:
+          type: string
+          format: date-time
+          example: "2026-02-18T10:30:00Z"

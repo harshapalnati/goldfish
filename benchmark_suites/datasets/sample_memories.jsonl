@@ -1,0 +1,6 @@
+{"id":"m1","content":"User prefers concise and direct responses for technical questions.","memory_type":"preference","importance":0.95}
+{"id":"m2","content":"The project goal is to launch a memory search service with LanceDB support.","memory_type":"goal","importance":0.9}
+{"id":"m3","content":"Rust async applications commonly run on the tokio runtime.","memory_type":"fact","importance":0.75}
+{"id":"m4","content":"Fix retrieval regressions before the production release deadline.","memory_type":"todo","importance":0.85}
+{"id":"m5","content":"Use hybrid recall combining lexical matching and vector similarity.","memory_type":"fact","importance":0.8}
+{"id":"m6","content":"User likes short release notes and clear action items.","memory_type":"preference","importance":0.8}
