@@ -281,9 +281,17 @@ cargo run --example server --features dashboard
 
 ---
 
-## Star History
+## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=harshapalnati/goldfish&type=Date)](https://star-history.com/#harshapalnati/goldfish&Date)
+<a href="https://star-history.com/#harshapalnati/goldfish&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=harshapalnati/goldfish&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=harshapalnati/goldfish&type=Date&theme=light" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=harshapalnati/goldfish&type=Date" />
+  </picture>
+</a>
+
+**[View Full Star History →](https://star-history.com/#harshapalnati/goldfish&Date)**
 
 ---
 
