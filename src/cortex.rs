@@ -7,6 +7,7 @@
 //! - Context Windows: Token-budgeted context for LLMs
 //! - Memory Summaries: Consolidation of old memories
 
+use crate::embedding::{CorpusStats, HashEmbeddingProvider};
 use crate::error::{MemoryError, Result};
 use crate::search::{MemorySearch, SearchConfig, SearchMode};
 use crate::types::{Association, Memory, MemoryId, MemorySearchResult, MemoryType, RelationType};
@@ -539,6 +540,7 @@ pub struct MemoryCortex {
     current_experience: RwLock<Option<Experience>>,
     data_dir: std::path::PathBuf,
     vector_index: Option<Arc<VectorIndex>>,
+    corpus_stats: RwLock<Option<CorpusStats>>,
 }
 
 impl MemoryCortex {
@@ -574,14 +576,55 @@ impl MemoryCortex {
         let vector_index = Arc::new(VectorIndex::new(vector_config));
         vector_index.init().await?;
 
-        Ok(Self {
+        let cortex = Self {
             store,
             search,
             working_memory: RwLock::new(WorkingMemory::new(20)),
             current_experience: RwLock::new(None),
             data_dir,
             vector_index: Some(vector_index),
-        })
+            corpus_stats: RwLock::new(None),
+        };
+        
+        // Build corpus stats for TF-IDF embeddings
+        cortex.rebuild_corpus_stats().await?;
+        
+        Ok(cortex)
+    }
+    
+    /// Rebuild BM25 search index from all stored memories
+    /// Call this after batch loading memories
+    pub async fn rebuild_search_index(&self) -> Result<usize> {
+        self.search.reindex_all().await
+    }
+
+    /// Rebuild corpus statistics from all stored memories
+    /// Call this after adding memories to update TF-IDF embeddings
+    pub async fn rebuild_corpus_stats(&self) -> Result<()> {
+        // Load all memories
+        let mut all_memories = Vec::new();
+        for mem_type in MemoryType::ALL {
+            let memories = self.store.get_by_type(*mem_type, 10000).await?;
+            all_memories.extend(memories);
+        }
+        
+        // Build corpus from memory contents
+        let docs: Vec<String> = all_memories
+            .into_iter()
+            .filter(|m| !m.forgotten)
+            .map(|m| m.content)
+            .collect();
+        
+        let corpus_stats = if docs.is_empty() {
+            None
+        } else {
+            Some(CorpusStats::from_documents(&docs))
+        };
+        
+        let mut stats_guard = self.corpus_stats.write().await;
+        *stats_guard = corpus_stats;
+        
+        Ok(())
     }
 
     pub fn data_dir(&self) -> &std::path::Path {
@@ -681,17 +724,39 @@ impl MemoryCortex {
 
     // ─── Search & Recall ──────────────────────────────────────────────────
 
-    /// Search memories with hybrid ranking (BM25 + importance + recency)
-    /// Uses Tantivy for proper BM25 scoring instead of naive text matching
+    /// Search memories with hybrid ranking (BM25 + vector + importance + recency)
+    /// Uses Tantivy BM25 + TF-IDF vector similarity for best results
     pub async fn recall(&self, query: &str, limit: usize) -> Result<Vec<MemorySearchResult>> {
-        // Use proper BM25 search via Tantivy
+        // 1. Get BM25 results from Tantivy
         let mut config = SearchConfig::default();
         config.mode = SearchMode::FullText;
         config.max_results = limit * 3; // Get more candidates for re-ranking
         
         let mut results = self.search.search(query, &config).await?;
         
-        // Apply importance + recency re-ranking
+        // 2. Get TF-IDF vector similarity scores if corpus stats available
+        if let Some(ref vector_index) = self.vector_index {
+            let corpus_stats_guard = self.corpus_stats.read().await;
+            
+            if let Some(ref corpus_stats) = *corpus_stats_guard {
+                // Generate TF-IDF query embedding
+                let embedder = HashEmbeddingProvider::new(384);
+                let query_embedding = embedder.embed_tfidf(query, corpus_stats);
+                
+                // Search vector index
+                let vector_results = vector_index.search(&query_embedding, limit * 2).await?;
+                
+                // Blend vector scores with BM25 results
+                for (memory_id, similarity) in vector_results {
+                    if let Some(result) = results.iter_mut().find(|r| r.memory.id == memory_id) {
+                        // Blend: 50% BM25, 35% vector, 15% importance/recency
+                        result.score = result.score * 0.50 + similarity * 0.35;
+                    }
+                }
+            }
+        }
+        
+        // 3. Apply importance + recency re-ranking
         let now = Utc::now();
         for result in &mut results {
             if result.memory.forgotten {
@@ -699,25 +764,22 @@ impl MemoryCortex {
                 continue;
             }
             
-            // Base BM25 score (already set by search)
-            let bm25_score = result.score;
-            
             // Importance boost (0.0 to 1.0)
-            let importance_boost = result.memory.importance * 0.20;
+            let importance_boost = result.memory.importance * 0.10;
             
             // Recency boost - newer memories get higher scores
             let hours_ago = (now - result.memory.last_accessed_at).num_hours().max(0) as f32;
-            let recency_boost = 0.15 / (1.0 + hours_ago * 0.01);
+            let recency_boost = 0.05 / (1.0 + hours_ago * 0.01);
             
-            // Combine: 65% BM25, 20% importance, 15% recency
-            result.score = bm25_score * 0.65 + importance_boost + recency_boost;
+            // Add remaining 15% from importance + recency
+            result.score += importance_boost + recency_boost;
         }
         
-        // Re-sort by combined score
+        // 4. Re-sort by combined score
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
         results.truncate(limit);
         
-        // Update ranks
+        // 5. Update ranks
         for (i, r) in results.iter_mut().enumerate() {
             r.rank = i + 1;
         }

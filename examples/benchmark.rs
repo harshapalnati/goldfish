@@ -30,7 +30,17 @@ async fn main() -> anyhow::Result<()> {
             println!("  ✓ Loaded {}/{} memories", i + 1, memories.len());
         }
     }
-    println!("  ✓ All {} memories loaded\n", memories.len());
+    println!("  ✓ All {} memories loaded", memories.len());
+    
+    // Rebuild search index for BM25
+    println!("  Rebuilding BM25 search index...");
+    let indexed = cortex.rebuild_search_index().await?;
+    println!("  ✓ Indexed {} memories", indexed);
+    
+    // Rebuild corpus stats for TF-IDF embeddings
+    println!("  Rebuilding corpus statistics...");
+    cortex.rebuild_corpus_stats().await?;
+    println!("  ✓ Corpus stats updated\n");
     
     // Create test cases
     let test_cases = create_test_dataset();
