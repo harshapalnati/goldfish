@@ -1,0 +1,154 @@
+{
+  "suite_name": "Goldfish PoC Retrieval Benchmark",
+  "generated_at_utc": "2026-02-19T01:29:13.105484400+00:00",
+  "backend": "file",
+  "command": "target\\debug\\examples\\benchmark_poc.exe --name poc_publish_file --vector-backend file --sweep --export-dataset --reset-data --data-dir ./benchmark_cortex_data/poc_file",
+  "config": {
+    "runs": 3,
+    "warmup_queries": 20,
+    "top_k": 10,
+    "ndcg_k": 10,
+    "vector_backend_requested": "file",
+    "sweep": true
+  },
+  "dataset": {
+    "topics": 8,
+    "memories_total": 2400,
+    "queries_total": 240,
+    "memories_per_topic": 300,
+    "queries_per_topic": 30,
+    "relevant_per_query": 25
+  },
+  "ingestion_time_ms": 8922.6058,
+  "profiles": [
+    {
+      "name": "baseline",
+      "weights": {
+        "text": 0.25,
+        "importance": 0.25,
+        "vector": 0.5
+      },
+      "runs": [
+        {
+          "run_index": 1,
+          "metrics": {
+            "evaluated_queries": 240,
+            "recall_at_1": 0.029333312,
+            "recall_at_3": 0.08450009,
+            "recall_at_5": 0.13250011,
+            "mrr": 0.7708333,
+            "ndcg_at_k": 0.51803434,
+            "avg_latency_ms": 409.05912958333363,
+            "p95_latency_ms": 423.7617
+          }
+        },
+        {
+          "run_index": 2,
+          "metrics": {
+            "evaluated_queries": 240,
+            "recall_at_1": 0.028999979,
+            "recall_at_3": 0.08483343,
+            "recall_at_5": 0.13266677,
+            "mrr": 0.7680556,
+            "ndcg_at_k": 0.5185543,
+            "avg_latency_ms": 410.8710695833336,
+            "p95_latency_ms": 424.5659
+          }
+        },
+        {
+          "run_index": 3,
+          "metrics": {
+            "evaluated_queries": 240,
+            "recall_at_1": 0.028999979,
+            "recall_at_3": 0.08416676,
+            "recall_at_5": 0.13266677,
+            "mrr": 0.76666665,
+            "ndcg_at_k": 0.51745,
+            "avg_latency_ms": 411.3715008333332,
+            "p95_latency_ms": 441.789
+          }
+        }
+      ],
+      "aggregate": {
+        "evaluated_queries": 240,
+        "recall_at_1": 0.02911109,
+        "recall_at_3": 0.0845001,
+        "recall_at_5": 0.13261122,
+        "mrr": 0.7685185,
+        "ndcg_at_k": 0.5180129,
+        "avg_latency_ms": 410.43390000000016,
+        "p95_latency_ms": 430.0388666666667
+      }
+    },
+    {
+      "name": "tuned",
+      "weights": {
+        "text": 0.38,
+        "importance": 0.12,
+        "vector": 0.5
+      },
+      "runs": [
+        {
+          "run_index": 1,
+          "metrics": {
+            "evaluated_queries": 240,
+            "recall_at_1": 0.02516665,
+            "recall_at_3": 0.07266666,
+            "recall_at_5": 0.11483344,
+            "mrr": 0.6906647,
+            "ndcg_at_k": 0.43354446,
+            "avg_latency_ms": 413.3134445833332,
+            "p95_latency_ms": 436.1256
+          }
+        },
+        {
+          "run_index": 2,
+          "metrics": {
+            "evaluated_queries": 240,
+            "recall_at_1": 0.02516665,
+            "recall_at_3": 0.07266666,
+            "recall_at_5": 0.1150001,
+            "mrr": 0.6903522,
+            "ndcg_at_k": 0.43246552,
+            "avg_latency_ms": 407.67605916666656,
+            "p95_latency_ms": 418.62260000000003
+          }
+        },
+        {
+          "run_index": 3,
+          "metrics": {
+            "evaluated_queries": 240,
+            "recall_at_1": 0.02549998,
+            "recall_at_3": 0.07316666,
+            "recall_at_5": 0.11516677,
+            "mrr": 0.6960697,
+            "ndcg_at_k": 0.43277138,
+            "avg_latency_ms": 411.3446458333334,
+            "p95_latency_ms": 433.0183
+          }
+        }
+      ],
+      "aggregate": {
+        "evaluated_queries": 240,
+        "recall_at_1": 0.025277758,
+        "recall_at_3": 0.07283333,
+        "recall_at_5": 0.11500011,
+        "mrr": 0.69236225,
+        "ndcg_at_k": 0.43292713,
+        "avg_latency_ms": 410.7780498611111,
+        "p95_latency_ms": 429.2555
+      }
+    }
+  ],
+  "comparison": {
+    "baseline": "baseline",
+    "candidate": "tuned",
+    "delta_recall_at_1": -0.0038333312,
+    "delta_recall_at_3": -0.011666767,
+    "delta_recall_at_5": -0.017611109,
+    "delta_mrr": -0.07615626,
+    "delta_ndcg_at_k": -0.08508575,
+    "delta_avg_latency_ms": 0.3441498611109637,
+    "delta_p95_latency_ms": -0.7833666666667227
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "suite_name": "Goldfish PoC Retrieval Benchmark",
+  "generated_at_utc": "2026-02-18T20:26:52.663781100+00:00",
+  "backend": "file",
+  "command": "target\\debug\\examples\\benchmark_poc.exe --name poc_publish --vector-backend file",
+  "config": {
+    "runs": 3,
+    "warmup_queries": 20,
+    "top_k": 10,
+    "ndcg_k": 10,
+    "vector_backend_requested": "file"
+  },
+  "dataset": {
+    "topics": 8,
+    "memories_total": 2400,
+    "queries_total": 240,
+    "memories_per_topic": 300,
+    "queries_per_topic": 30,
+    "relevant_per_query": 25
+  },
+  "ingestion_time_ms": 8948.7469,
+  "runs": [
+    {
+      "run_index": 1,
+      "metrics": {
+        "evaluated_queries": 240,
+        "recall_at_1": 0.03416664,
+        "recall_at_3": 0.100000225,
+        "recall_at_5": 0.15466693,
+        "mrr": 0.8823608,
+        "ndcg_at_k": 0.6343118,
+        "avg_latency_ms": 407.48535208333317,
+        "p95_latency_ms": 423.4366
+      }
+    },
+    {
+      "run_index": 2,
+      "metrics": {
+        "evaluated_queries": 240,
+        "recall_at_1": 0.03416664,
+        "recall_at_3": 0.100000225,
+        "recall_at_5": 0.15450028,
+        "mrr": 0.882222,
+        "ndcg_at_k": 0.6353006,
+        "avg_latency_ms": 456.9964008333332,
+        "p95_latency_ms": 514.1215
+      }
+    },
+    {
+      "run_index": 3,
+      "metrics": {
+        "evaluated_queries": 240,
+        "recall_at_1": 0.03416664,
+        "recall_at_3": 0.100000225,
+        "recall_at_5": 0.1543336,
+        "mrr": 0.8820831,
+        "ndcg_at_k": 0.6360771,
+        "avg_latency_ms": 465.4911633333333,
+        "p95_latency_ms": 527.3899
+      }
+    }
+  ],
+  "aggregate": {
+    "evaluated_queries": 240,
+    "recall_at_1": 0.03416664,
+    "recall_at_3": 0.100000225,
+    "recall_at_5": 0.15450026,
+    "mrr": 0.882222,
+    "ndcg_at_k": 0.6352298,
+    "avg_latency_ms": 443.3243054166666,
+    "p95_latency_ms": 488.316
+  }
+}

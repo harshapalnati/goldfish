@@ -1,0 +1,105 @@
+{
+  "suite_name": "RTEB-style retrieval suite",
+  "generated_at_utc": "2026-02-18T20:14:45.396256500+00:00",
+  "dataset": "benchmark_suites/datasets/sample_queries.jsonl",
+  "backend": "file",
+  "top_k": 10,
+  "ndcg_k": 10,
+  "metrics": {
+    "evaluated_queries": 5,
+    "recall_at_1": 0.9,
+    "recall_at_3": 1.0,
+    "recall_at_5": 1.0,
+    "mrr": 1.0,
+    "ndcg_at_k": 1.0,
+    "avg_latency_ms": 2.15566,
+    "p95_latency_ms": 2.7243
+  },
+  "per_query": [
+    {
+      "query_id": "q1",
+      "recall_at_1": 0.5,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_k": 1.0,
+      "latency_ms": 2.7243,
+      "retrieved_ids": [
+        "m1",
+        "m6",
+        "m2",
+        "m4",
+        "m5",
+        "m3"
+      ]
+    },
+    {
+      "query_id": "q2",
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_k": 1.0,
+      "latency_ms": 2.0699,
+      "retrieved_ids": [
+        "m2",
+        "m6",
+        "m5",
+        "m1",
+        "m3",
+        "m4"
+      ]
+    },
+    {
+      "query_id": "q3",
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_k": 1.0,
+      "latency_ms": 2.0170000000000003,
+      "retrieved_ids": [
+        "m3",
+        "m6",
+        "m2",
+        "m1",
+        "m4",
+        "m5"
+      ]
+    },
+    {
+      "query_id": "q4",
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_k": 1.0,
+      "latency_ms": 2.0105,
+      "retrieved_ids": [
+        "m4",
+        "m6",
+        "m3",
+        "m1",
+        "m5",
+        "m2"
+      ]
+    },
+    {
+      "query_id": "q5",
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_k": 1.0,
+      "latency_ms": 1.9566000000000001,
+      "retrieved_ids": [
+        "m5",
+        "m1",
+        "m6",
+        "m2",
+        "m4",
+        "m3"
+      ]
+    }
+  ]
+}
