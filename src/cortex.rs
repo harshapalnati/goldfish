@@ -637,6 +637,9 @@ impl MemoryCortex {
     pub async fn remember(&self, memory: &Memory) -> Result<()> {
         self.store.save(memory).await?;
 
+        // Index in BM25 search
+        self.search.index_memory(memory)?;
+
         // Store vector embedding for semantic search
         if let Some(ref vector_index) = self.vector_index {
             let embedding = generate_embedding(&memory.content);
