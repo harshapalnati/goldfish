@@ -31,7 +31,7 @@ pub use cortex::{
     ContextWindow, Experience, ImportanceCalculator, ImportanceWeights, MemoryCortex,
     MemorySummary, WorkingMemory, WorkingMemoryItem,
 };
-pub use embedding::{EmbeddingProvider, HashEmbeddingProvider};
+pub use embedding::{CorpusStats, EmbeddingProvider, HashEmbeddingProvider};
 pub use error::{MemoryError, Result};
 pub use eval_harness::{
     compare_configurations, create_test_dataset, print_results, run_comprehensive_benchmark,
