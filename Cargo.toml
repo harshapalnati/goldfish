@@ -62,6 +62,10 @@ required-features = ["dashboard"]
 name = "benchmark"
 path = "examples/benchmark.rs"
 
+[[example]]
+name = "comprehensive_benchmark"
+path = "examples/comprehensive_benchmark.rs"
+
 [[bin]]
 name = "goldfish"
 path = "src/cli.rs"
