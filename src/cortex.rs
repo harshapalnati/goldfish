@@ -735,6 +735,8 @@ impl MemoryCortex {
         let mut results = self.search.search(query, &config).await?;
         
         // 2. Get TF-IDF vector similarity scores if corpus stats available
+        // Only use vector search to augment results, not replace BM25
+        let mut vector_boosted_count = 0;
         if let Some(ref vector_index) = self.vector_index {
             let corpus_stats_guard = self.corpus_stats.read().await;
             
@@ -743,14 +745,27 @@ impl MemoryCortex {
                 let embedder = HashEmbeddingProvider::new(384);
                 let query_embedding = embedder.embed_tfidf(query, corpus_stats);
                 
-                // Search vector index
+                // Search vector index for additional memories not in BM25 results
                 let vector_results = vector_index.search(&query_embedding, limit * 2).await?;
                 
-                // Blend vector scores with BM25 results
+                // Add vector-found memories that BM25 missed
+                let existing_ids: std::collections::HashSet<_> = results.iter()
+                    .map(|r| r.memory.id.clone())
+                    .collect();
+                
                 for (memory_id, similarity) in vector_results {
-                    if let Some(result) = results.iter_mut().find(|r| r.memory.id == memory_id) {
-                        // Blend: 50% BM25, 35% vector, 15% importance/recency
-                        result.score = result.score * 0.50 + similarity * 0.35;
+                    if !existing_ids.contains(&memory_id) && vector_boosted_count < 3 {
+                        // Try to load this memory from store
+                        if let Ok(Some(memory)) = self.store.load(&memory_id).await {
+                            if !memory.forgotten {
+                                results.push(MemorySearchResult {
+                                    memory,
+                                    score: similarity * 0.5, // Lower score since BM25 didn't find it
+                                    rank: 0,
+                                });
+                                vector_boosted_count += 1;
+                            }
+                        }
                     }
                 }
             }
