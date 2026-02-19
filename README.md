@@ -7,6 +7,7 @@
 **REMEMBER! RECALL! RETRIEVE!**
 
 [![BUILD](https://img.shields.io/badge/BUILD-passing-brightgreen)](https://github.com/harshapalnati/goldfish/actions)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://github.com/harshapalnati/goldfish)
 [![RELEASE](https://img.shields.io/badge/RELEASE-v0.1.0-blue)](https://github.com/harshapalnati/goldfish/releases)
 [![API](https://img.shields.io/badge/API-REST-blue)](http://localhost:3000)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-green)](openapi.yaml)
@@ -27,6 +28,15 @@
 
 ### 1. Start the Server
 
+**Docker (Recommended):**
+```bash
+git clone https://github.com/harshapalnati/goldfish.git
+cd goldfish
+docker build -t goldfish .
+docker run -p 3000:3000 -v $(pwd)/data:/app/goldfish_server_data goldfish
+```
+
+**Or from source:**
 ```bash
 git clone https://github.com/harshapalnati/goldfish.git
 cd goldfish
@@ -254,17 +264,19 @@ Score = BM25×0.35 + Vector×0.35 + Recency×0.20 + Importance×0.10
 
 ## Installation
 
-### Docker (Coming Soon)
+### Docker (Recommended)
 ```bash
-docker run -p 3000:3000 goldfish/memory:latest
+git clone https://github.com/harshapalnati/goldfish.git
+cd goldfish
+docker build -t goldfish .
+docker run -p 3000:3000 -v $(pwd)/data:/app/goldfish_server_data goldfish
 ```
 
 ### From Source
 ```bash
 git clone https://github.com/harshapalnati/goldfish.git
 cd goldfish
-cargo build --release
-./target/release/goldfish-server
+cargo run --example server --features dashboard
 ```
 
 ---

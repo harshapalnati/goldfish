@@ -1,0 +1,11 @@
+target/
+.git/
+.gitignore
+*.md
+!README.md
+assets/
+example_data/
+test_*.txt
+check_results.txt
+.github/
+*.log
