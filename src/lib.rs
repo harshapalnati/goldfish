@@ -34,7 +34,8 @@ pub use cortex::{
 pub use embedding::{EmbeddingProvider, HashEmbeddingProvider};
 pub use error::{MemoryError, Result};
 pub use eval_harness::{
-    print_results, run_standard_eval, BenchmarkResults, EvalHarness, RetrievalTestCase,
+    compare_configurations, create_test_dataset, print_results, run_comprehensive_benchmark,
+    BenchmarkResults, QueryResult, RetrievalTestCase,
 };
 pub use hybrid_retrieval::{ExplainedSearchResult, HybridSearchConfig, RetrievalExplanation};
 pub use maintenance::{

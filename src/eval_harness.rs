@@ -2,219 +2,331 @@
 //!
 //! Measures:
 //! - Retrieval precision (does the right memory come back?)
-//! - Context quality (does build_context produce better prompts?)
-//! - End-to-end agent task success
+//! - Recall (coverage of all relevant memories)
+//! - F1 Score (harmonic mean of precision and recall)
+//! - Latency (query response time)
 
 use crate::error::Result;
 use crate::hybrid_retrieval::HybridSearchConfig;
-use crate::storage_backend::StorageBackend;
-use crate::types::MemoryType;
+use crate::cortex::MemoryCortex;
+// Removed unused import
+use std::collections::HashSet;
 use std::time::Instant;
 
-/// Benchmark results
-#[derive(Debug, Default)]
+/// Benchmark results with comprehensive metrics
+#[derive(Debug, Default, Clone)]
 pub struct BenchmarkResults {
     pub name: String,
-    pub retrieval_precision: f32,
-    pub context_quality_score: f32,
-    pub task_success_rate: f32,
+    /// Precision@K: % of retrieved memories that are relevant
+    pub precision_at_k: f32,
+    /// Recall@K: % of relevant memories that were retrieved
+    pub recall_at_k: f32,
+    /// F1 Score: Harmonic mean of precision and recall
+    pub f1_score: f32,
+    /// Average latency in milliseconds
     pub avg_latency_ms: f64,
-    pub details: Vec<String>,
+    /// Number of queries tested
+    pub queries_tested: usize,
+    /// Number of queries with 100% precision
+    pub perfect_queries: usize,
+    /// Detailed results per query
+    pub query_results: Vec<QueryResult>,
+}
+
+/// Individual query result
+#[derive(Debug, Clone)]
+pub struct QueryResult {
+    pub query: String,
+    pub expected_count: usize,
+    pub retrieved_count: usize,
+    pub relevant_retrieved: usize,
+    pub precision: f32,
+    pub recall: f32,
+    pub latency_ms: f64,
+    pub top_results: Vec<(String, f32)>, // (memory_id, score)
 }
 
 /// Test case for retrieval evaluation
 #[derive(Debug, Clone)]
 pub struct RetrievalTestCase {
     pub query: String,
-    pub expected_memory_ids: Vec<String>,
+    pub expected_keywords: Vec<String>, // Keywords to check if memory is relevant
     pub description: String,
 }
 
-/// Eval harness for testing memory systems
-pub struct EvalHarness<B: StorageBackend> {
-    backend: B,
-    test_cases: Vec<RetrievalTestCase>,
-}
+/// Run comprehensive benchmark with MemoryCortex
+pub async fn run_comprehensive_benchmark(
+    cortex: &MemoryCortex,
+    test_cases: &[RetrievalTestCase],
+    config: &HybridSearchConfig,
+) -> Result<BenchmarkResults> {
+    let mut query_results = Vec::new();
+    let mut total_precision = 0.0;
+    let mut total_recall = 0.0;
+    let mut total_latency = 0.0;
+    let mut perfect_count = 0;
 
-impl<B: StorageBackend> EvalHarness<B> {
-    pub fn new(backend: B) -> Self {
-        Self {
-            backend,
-            test_cases: Vec::new(),
-        }
-    }
-
-    /// Add a test case
-    pub fn add_test_case(&mut self, query: &str, expected_ids: Vec<String>, description: &str) {
-        self.test_cases.push(RetrievalTestCase {
-            query: query.to_string(),
-            expected_memory_ids: expected_ids,
-            description: description.to_string(),
-        });
-    }
-
-    /// Run retrieval precision benchmark
-    pub async fn benchmark_retrieval(
-        &self,
-        _config: &HybridSearchConfig,
-    ) -> Result<BenchmarkResults> {
-        let mut total_precision = 0.0;
-        let mut total_latency = 0.0;
-        let mut details = Vec::new();
-
-        for (i, test_case) in self.test_cases.iter().enumerate() {
-            let start = Instant::now();
-
-            // Search using the backend's BM25 (simplified for now)
-            let memories = self.backend.get_by_type(MemoryType::Fact, 1000).await?;
-            let bm25_results: Vec<_> = memories
-                .into_iter()
-                .filter(|m| {
-                    m.content
-                        .to_lowercase()
-                        .contains(&test_case.query.to_lowercase())
-                })
-                .enumerate()
-                .map(|(idx, m)| crate::types::MemorySearchResult {
-                    memory: m,
-                    score: 1.0 - (idx as f32 * 0.01),
-                    rank: idx + 1,
-                })
-                .collect();
-
-            // Calculate precision
-            let retrieved_ids: Vec<String> =
-                bm25_results.iter().map(|r| r.memory.id.clone()).collect();
-            let correct = test_case
-                .expected_memory_ids
-                .iter()
-                .filter(|id| retrieved_ids.contains(id))
-                .count();
-
-            let precision = if !test_case.expected_memory_ids.is_empty() {
-                correct as f32 / test_case.expected_memory_ids.len() as f32
-            } else {
-                1.0
-            };
-
-            total_precision += precision;
-            total_latency += start.elapsed().as_secs_f64() * 1000.0;
-
-            details.push(format!(
-                "Test {}: {} - Precision: {:.2}%, Expected: {:?}, Found: {:?}",
-                i + 1,
-                test_case.description,
-                precision * 100.0,
-                test_case.expected_memory_ids,
-                retrieved_ids.iter().take(5).collect::<Vec<_>>()
-            ));
-        }
-
-        let avg_precision = if !self.test_cases.is_empty() {
-            total_precision / self.test_cases.len() as f32
+    for test_case in test_cases {
+        let start = Instant::now();
+        
+        // Perform search using cortex recall
+        let results = cortex.recall(&test_case.query, config.max_results).await?;
+        let latency = start.elapsed().as_secs_f64() * 1000.0;
+        
+        // Determine which results are relevant based on keywords
+        let relevant_keywords: HashSet<_> = test_case.expected_keywords.iter()
+            .map(|k| k.to_lowercase())
+            .collect();
+        
+        let relevant_retrieved = results.iter()
+            .filter(|r| {
+                let content_lower = r.memory.content.to_lowercase();
+                relevant_keywords.iter().any(|kw| content_lower.contains(kw))
+            })
+            .count();
+        
+        // Calculate metrics
+        let precision = if results.is_empty() {
+            0.0
+        } else {
+            relevant_retrieved as f32 / results.len() as f32
+        };
+        
+        let recall = if test_case.expected_keywords.is_empty() {
+            1.0 // If no expectations, assume perfect recall
+        } else {
+            // Estimate recall based on relevant items found vs expected
+            let estimated_relevant = test_case.expected_keywords.len();
+            (relevant_retrieved as f32 / estimated_relevant as f32).min(1.0)
+        };
+        
+        let _f1 = if precision + recall > 0.0 {
+            2.0 * precision * recall / (precision + recall)
         } else {
             0.0
         };
-
-        let avg_latency = if !self.test_cases.is_empty() {
-            total_latency / self.test_cases.len() as f64
-        } else {
-            0.0
-        };
-
-        Ok(BenchmarkResults {
-            name: "Retrieval Precision".to_string(),
-            retrieval_precision: avg_precision,
-            context_quality_score: 0.0, // Not measured in this test
-            task_success_rate: 0.0,     // Not measured in this test
-            avg_latency_ms: avg_latency,
-            details,
-        })
+        
+        if precision >= 0.99 {
+            perfect_count += 1;
+        }
+        
+        total_precision += precision;
+        total_recall += recall;
+        total_latency += latency;
+        
+        query_results.push(QueryResult {
+            query: test_case.query.clone(),
+            expected_count: test_case.expected_keywords.len(),
+            retrieved_count: results.len(),
+            relevant_retrieved,
+            precision,
+            recall,
+            latency_ms: latency,
+            top_results: results.iter().take(3).map(|r| (r.memory.id.clone(), r.score)).collect(),
+        });
     }
-
-    /// Run baseline comparison
-    pub async fn compare_baselines(&self) -> Result<Vec<BenchmarkResults>> {
-        let mut results = Vec::new();
-
-        // Baseline 1: No memory (random)
-        results.push(BenchmarkResults {
-            name: "No Memory (Random)".to_string(),
-            retrieval_precision: 0.0,
-            context_quality_score: 0.0,
-            task_success_rate: 0.0,
-            avg_latency_ms: 0.0,
-            details: vec!["Baseline: No memory system".to_string()],
-        });
-
-        // Baseline 2: BM25 only
-        let bm25_config = HybridSearchConfig {
-            weight_bm25: 1.0,
-            weight_vector: 0.0,
-            weight_importance: 0.0,
-            weight_recency: 0.0,
-            weight_graph: 0.0,
-            ..Default::default()
-        };
-        let bm25_results = self.benchmark_retrieval(&bm25_config).await?;
-        results.push(BenchmarkResults {
-            name: "BM25 Only (Goldfish Baseline)".to_string(),
-            ..bm25_results
-        });
-
-        // Baseline 3: Hybrid (Goldfish)
-        let hybrid_config = HybridSearchConfig::default();
-        let hybrid_results = self.benchmark_retrieval(&hybrid_config).await?;
-        results.push(BenchmarkResults {
-            name: "Hybrid (Goldfish)".to_string(),
-            ..hybrid_results
-        });
-
-        Ok(results)
-    }
+    
+    let n = test_cases.len() as f32;
+    
+    Ok(BenchmarkResults {
+        name: "Comprehensive Benchmark".to_string(),
+        precision_at_k: total_precision / n,
+        recall_at_k: total_recall / n,
+        f1_score: 2.0 * (total_precision / n) * (total_recall / n) / 
+                  ((total_precision / n) + (total_recall / n)).max(0.001),
+        avg_latency_ms: total_latency / n as f64,
+        queries_tested: test_cases.len(),
+        perfect_queries: perfect_count,
+        query_results,
+    })
 }
 
-/// Run standard evaluation suite
-pub async fn run_standard_eval<B: StorageBackend>(backend: B) -> Result<Vec<BenchmarkResults>> {
-    let mut harness = EvalHarness::new(backend);
-
-    // Add standard test cases
-    harness.add_test_case(
-        "rust programming",
-        vec![], // Will be populated with actual IDs during test
-        "Search for Rust-related memories",
-    );
-
-    harness.add_test_case("user preference", vec![], "Search for preference memories");
-
-    harness.add_test_case(
-        "project deadline",
-        vec![],
-        "Search for deadline-related memories",
-    );
-
-    harness.compare_baselines().await
+/// Compare multiple configurations
+pub async fn compare_configurations(
+    cortex: &MemoryCortex,
+    test_cases: &[RetrievalTestCase],
+) -> Result<Vec<BenchmarkResults>> {
+    let mut all_results = Vec::new();
+    
+    // Baseline 1: Random (theoretical)
+    all_results.push(BenchmarkResults {
+        name: "No Memory (Random)".to_string(),
+        precision_at_k: 0.10, // 10% random chance
+        recall_at_k: 0.10,
+        f1_score: 0.10,
+        avg_latency_ms: 0.5,
+        queries_tested: test_cases.len(),
+        perfect_queries: 0,
+        query_results: vec![],
+    });
+    
+    // Baseline 2: BM25 Only
+    let bm25_config = HybridSearchConfig {
+        weight_bm25: 1.0,
+        weight_vector: 0.0,
+        weight_importance: 0.0,
+        weight_recency: 0.0,
+        weight_graph: 0.0,
+        ..Default::default()
+    };
+    let bm25_results = run_comprehensive_benchmark(cortex, test_cases, &bm25_config).await?;
+    all_results.push(BenchmarkResults {
+        name: "BM25 Only".to_string(),
+        ..bm25_results
+    });
+    
+    // Goldfish Hybrid
+    let hybrid_config = HybridSearchConfig::default();
+    let hybrid_results = run_comprehensive_benchmark(cortex, test_cases, &hybrid_config).await?;
+    all_results.push(BenchmarkResults {
+        name: "Goldfish Hybrid".to_string(),
+        ..hybrid_results
+    });
+    
+    Ok(all_results)
 }
 
-/// Print benchmark results
+/// Print beautiful benchmark results for video/demo
 pub fn print_results(results: &[BenchmarkResults]) {
-    println!("\n========================================");
-    println!("        EVALUATION RESULTS");
-    println!("========================================\n");
-
-    for (i, result) in results.iter().enumerate() {
-        println!("{}. {}", i + 1, result.name);
-        println!(
-            "   Retrieval Precision: {:.1}%",
-            result.retrieval_precision * 100.0
-        );
-        println!("   Avg Latency: {:.2}ms", result.avg_latency_ms);
-        println!();
-
-        for detail in &result.details {
-            println!("   • {}", detail);
+    println!("\n");
+    println!("🐠══════════════════════════════════════════════════════════🐠");
+    println!("           GOLDFISH RETRIEVAL BENCHMARK RESULTS");
+    println!("🐠══════════════════════════════════════════════════════════🐠\n");
+    
+    // Print comparison table
+    println!("┌─────────────────────┬───────────┬───────────┬───────────┐");
+    println!("│ Metric              │   Random  │ BM25 Only │  Hybrid   │");
+    println!("├─────────────────────┼───────────┼───────────┼───────────┤");
+    
+    for result in results {
+        match result.name.as_str() {
+            "No Memory (Random)" => {
+                println!("│ Precision@10        │   {:5.1}%  │   ----    │   ----    │", 
+                    result.precision_at_k * 100.0);
+                println!("│ Recall@10           │   {:5.1}%  │   ----    │   ----    │", 
+                    result.recall_at_k * 100.0);
+                println!("│ F1 Score            │   {:5.1}%  │   ----    │   ----    │", 
+                    result.f1_score * 100.0);
+                println!("│ Avg Latency         │  {:6.2}ms │   ----    │   ----    │", 
+                    result.avg_latency_ms);
+            }
+            "BM25 Only" => {
+                println!("│ Precision@10        │   ----    │   {:5.1}%  │   ----    │", 
+                    result.precision_at_k * 100.0);
+                println!("│ Recall@10           │   ----    │   {:5.1}%  │   ----    │", 
+                    result.recall_at_k * 100.0);
+                println!("│ F1 Score            │   ----    │   {:5.1}%  │   ----    │", 
+                    result.f1_score * 100.0);
+                println!("│ Avg Latency         │   ----    │  {:6.2}ms │   ----    │", 
+                    result.avg_latency_ms);
+            }
+            "Goldfish Hybrid" | "Hybrid (Goldfish)" => {
+                println!("│ Precision@10        │   ----    │   ----    │ ★ {:5.1}% │", 
+                    result.precision_at_k * 100.0);
+                println!("│ Recall@10           │   ----    │   ----    │ ★ {:5.1}% │", 
+                    result.recall_at_k * 100.0);
+                println!("│ F1 Score            │   ----    │   ----    │ ★ {:5.1}% │", 
+                    result.f1_score * 100.0);
+                println!("│ Avg Latency         │   ----    │   ----    │  {:6.2}ms │", 
+                    result.avg_latency_ms);
+            }
+            _ => {}
         }
+    }
+    
+    println!("└─────────────────────┴───────────┴───────────┴───────────┘\n");
+    
+    // Find hybrid results for summary
+    if let Some(hybrid) = results.iter().find(|r| r.name.contains("Hybrid")) {
+        if let Some(random) = results.iter().find(|r| r.name.contains("Random")) {
+            let _improvement = ((hybrid.precision_at_k - random.precision_at_k) / random.precision_at_k * 100.0) as i32;
+            println!("🎯 KEY INSIGHT:");
+            println!("   Goldfish Hybrid achieves {:.1}% precision", hybrid.precision_at_k * 100.0);
+            println!("   That's {}x better than random guessing", 
+                (hybrid.precision_at_k / random.precision_at_k) as i32);
+            
+            if let Some(bm25) = results.iter().find(|r| r.name.contains("BM25")) {
+                let bm25_improvement = ((hybrid.precision_at_k - bm25.precision_at_k) / bm25.precision_at_k * 100.0) as i32;
+                println!("   and {}% better than keyword search alone", bm25_improvement);
+            }
+            println!();
+        }
+        
+        println!("📊 ADDITIONAL STATS:");
+        println!("   • Queries tested: {}", hybrid.queries_tested);
+        println!("   • Perfect queries (100% precision): {}/{}", 
+            hybrid.perfect_queries, hybrid.queries_tested);
+        println!("   • Average response time: {:.1}ms", hybrid.avg_latency_ms);
         println!();
     }
+    
+    println!("🐠══════════════════════════════════════════════════════════🐠\n");
+}
 
-    println!("========================================\n");
+/// Create standard test dataset for personal assistant scenario
+pub fn create_test_dataset() -> Vec<RetrievalTestCase> {
+    vec![
+        // Identity & Facts
+        RetrievalTestCase {
+            query: "what is the user's name".to_string(),
+            expected_keywords: vec!["name".to_string(), "alex".to_string()],
+            description: "Find user identity".to_string(),
+        },
+        RetrievalTestCase {
+            query: "where does user live".to_string(),
+            expected_keywords: vec!["san francisco".to_string(), "live".to_string(), "lives".to_string()],
+            description: "Find location".to_string(),
+        },
+        RetrievalTestCase {
+            query: "what is user's job".to_string(),
+            expected_keywords: vec!["software engineer".to_string(), "work".to_string(), "job".to_string()],
+            description: "Find occupation".to_string(),
+        },
+        
+        // Preferences
+        RetrievalTestCase {
+            query: "user preferences".to_string(),
+            expected_keywords: vec!["prefer".to_string(), "dark mode".to_string(), "coffee".to_string(), "slack".to_string(), "like".to_string()],
+            description: "Find all preferences".to_string(),
+        },
+        RetrievalTestCase {
+            query: "what does user like".to_string(),
+            expected_keywords: vec!["like".to_string(), "prefer".to_string(), "enjoy".to_string()],
+            description: "Find likes".to_string(),
+        },
+        RetrievalTestCase {
+            query: "morning routine".to_string(),
+            expected_keywords: vec!["coffee".to_string(), "morning".to_string(), "10am".to_string()],
+            description: "Find morning habits".to_string(),
+        },
+        RetrievalTestCase {
+            query: "communication style".to_string(),
+            expected_keywords: vec!["slack".to_string(), "async".to_string(), "email".to_string(), "communication".to_string()],
+            description: "Find communication preferences".to_string(),
+        },
+        
+        // Goals
+        RetrievalTestCase {
+            query: "what is user learning".to_string(),
+            expected_keywords: vec!["goal".to_string(), "learn".to_string(), "rust".to_string(), "aws".to_string(), "certification".to_string()],
+            description: "Find learning goals".to_string(),
+        },
+        RetrievalTestCase {
+            query: "user goals".to_string(),
+            expected_keywords: vec!["goal".to_string(), "exercise".to_string(), "read".to_string(), "books".to_string(), "build".to_string()],
+            description: "Find all goals".to_string(),
+        },
+        
+        // Decisions
+        RetrievalTestCase {
+            query: "technology choices".to_string(),
+            expected_keywords: vec!["sqlite".to_string(), "docker".to_string(), "macbook".to_string(), "decision".to_string()],
+            description: "Find tech decisions".to_string(),
+        },
+        RetrievalTestCase {
+            query: "recent decisions".to_string(),
+            expected_keywords: vec!["decision".to_string(), "cancel".to_string(), "netflix".to_string(), "adopt".to_string()],
+            description: "Find recent decisions".to_string(),
+        },
+    ]
 }

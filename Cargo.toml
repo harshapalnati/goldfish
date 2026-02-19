@@ -58,6 +58,10 @@ name = "server"
 path = "examples/server.rs"
 required-features = ["dashboard"]
 
+[[example]]
+name = "benchmark"
+path = "examples/benchmark.rs"
+
 [[bin]]
 name = "goldfish"
 path = "src/cli.rs"
