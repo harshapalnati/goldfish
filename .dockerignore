@@ -5,6 +5,7 @@ target/
 !README.md
 assets/
 example_data/
+benchmark_data/
 test_*.txt
 check_results.txt
 .github/
