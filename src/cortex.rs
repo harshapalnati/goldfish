@@ -8,6 +8,7 @@
 //! - Memory Summaries: Consolidation of old memories
 
 use crate::error::{MemoryError, Result};
+use crate::search::{MemorySearch, SearchConfig, SearchMode};
 use crate::types::{Association, Memory, MemoryId, MemorySearchResult, MemoryType, RelationType};
 use crate::vector_search::{generate_embedding, VectorIndex, VectorSearchConfig};
 use crate::MemoryStore;
@@ -533,6 +534,7 @@ impl MemorySummary {
 /// Memory cortex - the main agentic memory system
 pub struct MemoryCortex {
     store: Arc<MemoryStore>,
+    search: MemorySearch,
     working_memory: RwLock<WorkingMemory>,
     current_experience: RwLock<Option<Experience>>,
     data_dir: std::path::PathBuf,
@@ -560,6 +562,10 @@ impl MemoryCortex {
 
         let store = MemoryStore::new(pool);
 
+        // Initialize search (BM25 index) - MemorySearch::with_dir expects Arc<MemoryStore>
+        let search = MemorySearch::with_dir(Arc::clone(&store), &data_dir)?;
+        search.reindex_all().await?;
+
         // Initialize vector index
         let vector_config = VectorSearchConfig {
             dimension: 384,
@@ -570,6 +576,7 @@ impl MemoryCortex {
 
         Ok(Self {
             store,
+            search,
             working_memory: RwLock::new(WorkingMemory::new(20)),
             current_experience: RwLock::new(None),
             data_dir,
@@ -674,80 +681,47 @@ impl MemoryCortex {
 
     // ─── Search & Recall ──────────────────────────────────────────────────
 
-    /// Search memories with hybrid ranking (text + vector + importance + recency)
+    /// Search memories with hybrid ranking (BM25 + importance + recency)
+    /// Uses Tantivy for proper BM25 scoring instead of naive text matching
     pub async fn recall(&self, query: &str, limit: usize) -> Result<Vec<MemorySearchResult>> {
-        // Load all memory types for search
-        let mut all_memories = Vec::new();
-        for mem_type in MemoryType::ALL {
-            let memories = self.store.get_by_type(*mem_type, 1000).await?;
-            all_memories.extend(memories);
-        }
-
-        let query_lower = query.to_lowercase();
-        let query_embedding = generate_embedding(query);
-        let mut scored_memories: HashMap<String, (Memory, f32)> = HashMap::new();
-
-        // 1. Text search (BM25-style)
-        for memory in &all_memories {
-            if memory.forgotten {
+        // Use proper BM25 search via Tantivy
+        let mut config = SearchConfig::default();
+        config.mode = SearchMode::FullText;
+        config.max_results = limit * 3; // Get more candidates for re-ranking
+        
+        let mut results = self.search.search(query, &config).await?;
+        
+        // Apply importance + recency re-ranking
+        let now = Utc::now();
+        for result in &mut results {
+            if result.memory.forgotten {
+                result.score = 0.0;
                 continue;
             }
-            let content_lower = memory.content.to_lowercase();
-            let text_score = if content_lower.contains(&query_lower) {
-                1.0
-            } else {
-                // Check word overlap
-                let query_words: std::collections::HashSet<_> =
-                    query_lower.split_whitespace().collect();
-                let content_words: std::collections::HashSet<_> =
-                    content_lower.split_whitespace().collect();
-                let overlap = query_words.intersection(&content_words).count() as f32;
-                overlap / query_words.len().max(1) as f32
-            };
-
-            if text_score > 0.0 {
-                let importance = ImportanceCalculator::calculate_with_query(memory, query);
-                let combined_score = text_score * 0.5 + importance * 0.5;
-                scored_memories.insert(memory.id.clone(), (memory.clone(), combined_score));
-            }
+            
+            // Base BM25 score (already set by search)
+            let bm25_score = result.score;
+            
+            // Importance boost (0.0 to 1.0)
+            let importance_boost = result.memory.importance * 0.20;
+            
+            // Recency boost - newer memories get higher scores
+            let hours_ago = (now - result.memory.last_accessed_at).num_hours().max(0) as f32;
+            let recency_boost = 0.15 / (1.0 + hours_ago * 0.01);
+            
+            // Combine: 65% BM25, 20% importance, 15% recency
+            result.score = bm25_score * 0.65 + importance_boost + recency_boost;
         }
-
-        // 2. Vector search (if available)
-        if let Some(ref vector_index) = self.vector_index {
-            let vector_results = vector_index.search(&query_embedding, limit * 2).await?;
-            for (memory_id, similarity) in vector_results {
-                if let Some(memory) = all_memories.iter().find(|m| m.id == memory_id) {
-                    if memory.forgotten {
-                        continue;
-                    }
-                    let entry = scored_memories
-                        .entry(memory_id)
-                        .or_insert((memory.clone(), 0.0));
-                    // Combine scores: 50% text, 50% vector
-                    entry.1 = entry.1 * 0.5 + similarity * 0.5;
-                }
-            }
-        }
-
-        // 3. Convert to results and sort
-        let mut results: Vec<MemorySearchResult> = scored_memories
-            .into_values()
-            .map(|(memory, score)| MemorySearchResult {
-                memory,
-                score,
-                rank: 0, // Will be set after sorting
-            })
-            .collect();
-
-        // Sort by combined score
+        
+        // Re-sort by combined score
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
         results.truncate(limit);
-
+        
         // Update ranks
         for (i, r) in results.iter_mut().enumerate() {
             r.rank = i + 1;
         }
-
+        
         Ok(results)
     }
 
