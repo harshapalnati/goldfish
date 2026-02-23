@@ -9,7 +9,10 @@
 //! POST /v1/context             - Build context for LLM
 //! POST /v1/episodes/start      - Start an episode
 //! POST /v1/episodes/:id/end    - End an episode
-//! GET  /v1/health              - Health check
+//! POST /v1/summary             - Generate rolling summary
+//! GET  /v1/summary             - Get current summary
+//! POST /v1/duplicates/check    - Check for duplicate memories
+//! GET  /health                 - Health check
 
 use axum::{
     extract::{Path, State},
@@ -18,7 +21,10 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use goldfish::{Memory, MemoryCortex, MemoryType};
+use goldfish::{
+    Memory, MemoryCortex, MemoryType,
+    types::{SummaryConfig, RedundancyConfig, DuplicateAction, UserSummary},
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -125,6 +131,53 @@ pub struct EpisodeResponse {
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
+}
+
+/// Request to generate summary
+#[derive(Debug, Deserialize)]
+pub struct GenerateSummaryRequest {
+    #[serde(default = "default_max_length")]
+    pub max_length: usize,
+    #[serde(default = "default_min_importance")]
+    pub min_importance: f32,
+}
+
+fn default_max_length() -> usize { 2000 }
+fn default_min_importance() -> f32 { 0.3 }
+
+/// Summary response
+#[derive(Debug, Serialize)]
+pub struct SummaryResponse {
+    pub summary: String,
+    pub memory_count: usize,
+    pub importance_threshold: f32,
+    pub generated_at: String,
+}
+
+/// Request to check duplicates
+#[derive(Debug, Deserialize)]
+pub struct CheckDuplicatesRequest {
+    pub content: String,
+    #[serde(default = "default_similarity_threshold")]
+    pub similarity_threshold: f32,
+}
+
+fn default_similarity_threshold() -> f32 { 0.8 }
+
+/// Duplicate check response
+#[derive(Debug, Serialize)]
+pub struct DuplicateCheckResponse {
+    pub has_duplicate: bool,
+    pub similar_memories: Vec<DuplicateMatch>,
+    pub action_taken: String,
+}
+
+/// Duplicate match info
+#[derive(Debug, Serialize)]
+pub struct DuplicateMatch {
+    pub id: String,
+    pub content: String,
+    pub similarity: f32,
 }
 
 /// Store a memory
@@ -296,6 +349,104 @@ async fn health_check() -> Json<HealthResponse> {
     })
 }
 
+/// Generate rolling summary
+async fn generate_summary(
+    State(state): State<Arc<ApiState>>,
+    Json(req): Json<GenerateSummaryRequest>,
+) -> Result<Json<SummaryResponse>, StatusCode> {
+    let cortex = state.cortex.read().await;
+    
+    let config = SummaryConfig {
+        max_length: req.max_length,
+        min_importance: req.min_importance,
+        include_types: vec![
+            MemoryType::Fact,
+            MemoryType::Preference,
+            MemoryType::Goal,
+            MemoryType::Decision,
+            MemoryType::Event,
+        ],
+        auto_regenerate: false,
+        regenerate_threshold: 5,
+    };
+    
+    let summary = cortex
+        .generate_summary(None, &config)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    Ok(Json(SummaryResponse {
+        summary: summary.summary_text,
+        memory_count: summary.memory_count,
+        importance_threshold: summary.importance_threshold,
+        generated_at: chrono::Utc::now().to_rfc3339(),
+    }))
+}
+
+/// Get current summary
+async fn get_summary(
+    State(state): State<Arc<ApiState>>,
+) -> Result<Json<SummaryResponse>, StatusCode> {
+    let cortex = state.cortex.read().await;
+    
+    let summary = cortex
+        .get_summary(None)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    match summary {
+        Some(s) => Ok(Json(SummaryResponse {
+            summary: s.summary_text,
+            memory_count: s.memory_count,
+            importance_threshold: s.importance_threshold,
+            generated_at: s.generated_at.to_rfc3339(),
+        })),
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+/// Check for duplicate memories
+async fn check_duplicates(
+    State(state): State<Arc<ApiState>>,
+    Json(req): Json<CheckDuplicatesRequest>,
+) -> Result<Json<DuplicateCheckResponse>, StatusCode> {
+    let cortex = state.cortex.read().await;
+    
+    let config = RedundancyConfig {
+        enabled: true,
+        similarity_threshold: req.similarity_threshold,
+        check_on_store: false,
+        duplicate_action: DuplicateAction::Warn,
+    };
+    
+    let result = cortex
+        .check_duplicates(&req.content, &config)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let action_taken = match result.action_taken {
+        DuplicateAction::Warn => "warning_returned",
+        DuplicateAction::Reject => "rejected",
+        DuplicateAction::Ask => "requires_decision",
+    };
+    
+    let similar_memories: Vec<DuplicateMatch> = result
+        .duplicates
+        .into_iter()
+        .map(|d| DuplicateMatch {
+            id: d.memory_id,
+            content: d.content,
+            similarity: d.similarity,
+        })
+        .collect();
+    
+    Ok(Json(DuplicateCheckResponse {
+        has_duplicate: !similar_memories.is_empty(),
+        similar_memories,
+        action_taken: action_taken.to_string(),
+    }))
+}
+
 /// Parse memory type from string
 fn parse_memory_type(s: &str) -> MemoryType {
     match s.to_lowercase().as_str() {
@@ -321,6 +472,9 @@ pub fn create_router(cortex: Arc<RwLock<MemoryCortex>>) -> Router {
         .route("/v1/context", post(build_context))
         .route("/v1/episodes/start", post(start_episode))
         .route("/v1/episodes/:id/end", post(end_episode))
+        .route("/v1/summary", post(generate_summary))
+        .route("/v1/summary", get(get_summary))
+        .route("/v1/duplicates/check", post(check_duplicates))
         .with_state(state)
 }
 
@@ -339,12 +493,15 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     println!("✅ Server running on http://localhost:3000");
     println!("\nAPI Endpoints:");
-    println!("  POST /v1/memory          - Store memory");
-    println!("  GET  /v1/memory/:id      - Get memory");
-    println!("  POST /v1/search          - Search memories");
-    println!("  POST /v1/context         - Build LLM context");
-    println!("  POST /v1/episodes/start  - Start episode");
-    println!("  GET  /health             - Health check");
+    println!("  POST /v1/memory            - Store memory");
+    println!("  GET  /v1/memory/:id        - Get memory");
+    println!("  POST /v1/search            - Search memories");
+    println!("  POST /v1/context           - Build LLM context");
+    println!("  POST /v1/episodes/start    - Start episode");
+    println!("  POST /v1/summary           - Generate rolling summary");
+    println!("  GET  /v1/summary           - Get current summary");
+    println!("  POST /v1/duplicates/check  - Check for duplicates");
+    println!("  GET  /health               - Health check");
 
     axum::serve(listener, app).await?;
 

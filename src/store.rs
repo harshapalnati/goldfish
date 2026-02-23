@@ -3,7 +3,7 @@
 use crate::confidence::VerificationStatus;
 use crate::cortex::{Experience, MemorySummary};
 use crate::error::{MemoryError, Result};
-use crate::types::{Association, Memory, MemoryId, MemoryType, RelationType};
+use crate::types::{Association, DuplicateInfo, Memory, MemoryId, MemoryType, RelationType, UserSummary};
 
 use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
@@ -696,6 +696,222 @@ impl MemoryStore {
 
         Ok(summaries)
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // USER SUMMARIES - Rolling Summary Feature
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /// Save a user summary
+    pub async fn save_user_summary(&self, summary: &UserSummary) -> Result<()> {
+        let included_types_json = serde_json::to_string(&summary.included_types)
+            .map_err(|e| MemoryError::Serialization(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO user_summaries (
+                id, user_id, summary_text, generated_at, memory_count, 
+                importance_threshold, included_types, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            "#,
+        )
+        .bind(&summary.id)
+        .bind(&summary.user_id)
+        .bind(&summary.summary_text)
+        .bind(summary.generated_at.to_rfc3339())
+        .bind(summary.memory_count as i64)
+        .bind(summary.importance_threshold)
+        .bind(&included_types_json)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get the most recent user summary
+    pub async fn get_user_summary(&self, user_id: Option<&str>) -> Result<Option<UserSummary>> {
+        let query = if let Some(uid) = user_id {
+            sqlx::query(
+                r#"
+                SELECT id, user_id, summary_text, generated_at, memory_count, 
+                       importance_threshold, included_types
+                FROM user_summaries
+                WHERE user_id = ? OR user_id IS NULL
+                ORDER BY generated_at DESC
+                LIMIT 1
+                "#,
+            )
+            .bind(uid)
+        } else {
+            sqlx::query(
+                r#"
+                SELECT id, user_id, summary_text, generated_at, memory_count, 
+                       importance_threshold, included_types
+                FROM user_summaries
+                ORDER BY generated_at DESC
+                LIMIT 1
+                "#,
+            )
+        };
+
+        let rows = query.fetch_all(&self.pool).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        let included_types_json: String = row.try_get("included_types").unwrap_or_default();
+        let included_types: Vec<MemoryType> = serde_json::from_str(&included_types_json).unwrap_or_default();
+
+        let generated_at_str: String = row.try_get("generated_at").unwrap_or_default();
+        let generated_at = chrono::DateTime::parse_from_rfc3339(&generated_at_str)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now());
+
+        Ok(Some(UserSummary {
+            id: row.try_get("id").unwrap_or_default(),
+            user_id: row.try_get("user_id").ok(),
+            summary_text: row.try_get("summary_text").unwrap_or_default(),
+            generated_at,
+            memory_count: row.try_get::<i64, _>("memory_count").unwrap_or(0) as usize,
+            importance_threshold: row.try_get::<f64, _>("importance_threshold").unwrap_or(0.6) as f32,
+            included_types,
+        }))
+    }
+
+    /// Get all user summaries
+    pub async fn get_all_user_summaries(&self) -> Result<Vec<UserSummary>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, user_id, summary_text, generated_at, memory_count, 
+                   importance_threshold, included_types
+            FROM user_summaries
+            ORDER BY generated_at DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut summaries = Vec::new();
+        for row in rows {
+            let included_types_json: String = row.try_get("included_types").unwrap_or_default();
+            let included_types: Vec<MemoryType> = serde_json::from_str(&included_types_json).unwrap_or_default();
+
+            let generated_at_str: String = row.try_get("generated_at").unwrap_or_default();
+            let generated_at = chrono::DateTime::parse_from_rfc3339(&generated_at_str)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(|_| chrono::Utc::now());
+
+            summaries.push(UserSummary {
+                id: row.try_get("id").unwrap_or_default(),
+                user_id: row.try_get("user_id").ok(),
+                summary_text: row.try_get("summary_text").unwrap_or_default(),
+                generated_at,
+                memory_count: row.try_get::<i64, _>("memory_count").unwrap_or(0) as usize,
+                importance_threshold: row.try_get::<f64, _>("importance_threshold").unwrap_or(0.6) as f32,
+                included_types,
+            });
+        }
+
+        Ok(summaries)
+    }
+
+    /// Delete a user summary
+    pub async fn delete_user_summary(&self, id: &str) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM user_summaries WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // REDUNDANCY DETECTION - Duplicate Prevention
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /// Find similar memories using content search
+    pub async fn find_similar_memories(&self, content: &str, threshold: f32, limit: i64) -> Result<Vec<DuplicateInfo>> {
+        // Use basic LIKE search for simplicity
+        // In production, this would use the vector index
+        let search_term = format!("%{}%", content.to_lowercase());
+        
+        let rows = sqlx::query(
+            r#"
+            SELECT id, content, importance
+            FROM memories
+            WHERE LOWER(content) LIKE ? AND forgotten = 0
+            ORDER BY importance DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(&search_term)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut duplicates = Vec::new();
+        for row in rows {
+            let existing_content: String = row.try_get("content").unwrap_or_default();
+            
+            // Calculate simple similarity based on word overlap
+            let similarity = calculate_similarity(content, &existing_content);
+            
+            if similarity >= threshold {
+                duplicates.push(DuplicateInfo {
+                    memory_id: row.try_get("id").unwrap_or_default(),
+                    content: existing_content,
+                    similarity,
+                });
+            }
+        }
+
+        Ok(duplicates)
+    }
+
+    /// Mark a memory as duplicate
+    pub async fn mark_as_duplicate(&self, memory_id: &str, original_id: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE memories 
+            SET is_duplicate = 1, original_memory_id = ?
+            WHERE id = ?
+            "#,
+        )
+        .bind(original_id)
+        .bind(memory_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+}
+
+// Helper function to calculate simple word overlap similarity
+fn calculate_similarity(text1: &str, text2: &str) -> f32 {
+    let words1: std::collections::HashSet<String> = text1
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    
+    let words2: std::collections::HashSet<String> = text2
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    
+    if words1.is_empty() || words2.is_empty() {
+        return 0.0;
+    }
+    
+    let intersection: std::collections::HashSet<_> = words1.intersection(&words2).collect();
+    let union: std::collections::HashSet<_> = words1.union(&words2).collect();
+    
+    intersection.len() as f32 / union.len() as f32
 }
 
 /// Sort order for queries

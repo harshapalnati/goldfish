@@ -10,7 +10,10 @@
 use crate::embedding::{CorpusStats, HashEmbeddingProvider};
 use crate::error::{MemoryError, Result};
 use crate::search::{MemorySearch, SearchConfig, SearchMode};
-use crate::types::{Association, Memory, MemoryId, MemorySearchResult, MemoryType, RelationType};
+use crate::types::{
+    Association, DuplicateAction, DuplicateCheckResult, Memory, MemoryId, 
+    MemorySearchResult, MemoryType, RedundancyConfig, RelationType, SummaryConfig, UserSummary
+};
 use crate::vector_search::{generate_embedding, VectorIndex, VectorSearchConfig};
 use crate::MemoryStore;
 use chrono::{DateTime, Duration, Utc};
@@ -825,6 +828,176 @@ impl MemoryCortex {
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
         Ok(scored.into_iter().take(limit).map(|(m, _)| m).collect())
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // ROLLING SUMMARY - User Portrait Feature
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /// Generate a user summary from high-importance memories
+    pub async fn generate_summary(
+        &self, 
+        user_id: Option<String>,
+        config: &SummaryConfig,
+    ) -> Result<UserSummary> {
+        // Load high-importance memories of included types
+        let mut relevant_memories = Vec::new();
+        
+        for mem_type in &config.include_types {
+            let memories = self.store.get_by_type(*mem_type, 1000).await?;
+            for mem in memories {
+                if !mem.forgotten && mem.importance >= config.min_importance {
+                    relevant_memories.push(mem);
+                }
+            }
+        }
+        
+        // Sort by importance
+        relevant_memories.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap());
+        
+        let _total_memories = relevant_memories.len();
+        
+        // Build summary text
+        let mut summary_lines = Vec::new();
+        let mut current_type: Option<MemoryType> = None;
+        let mut char_count = 0;
+        
+        for mem in &relevant_memories {
+            // Check if adding this would exceed max length
+            let mem_text = format!("- {}", mem.content);
+            let mem_len = mem_text.len();
+            if char_count + mem_len > config.max_length {
+                // Try to finish current section gracefully
+                if char_count + 20 > config.max_length {
+                    break;
+                }
+            }
+            
+            // Add section header if type changed
+            if current_type != Some(mem.memory_type) {
+                current_type = Some(mem.memory_type);
+                summary_lines.push(format!("\n{}:", match mem.memory_type {
+                    MemoryType::Identity => "Identity",
+                    MemoryType::Preference => "Preferences",
+                    MemoryType::Goal => "Goals",
+                    MemoryType::Decision => "Decisions",
+                    MemoryType::Fact => "Facts",
+                    MemoryType::Event => "Events",
+                    MemoryType::Observation => "Observations",
+                    MemoryType::Todo => "Todos",
+                    MemoryType::Summary => "Summaries",
+                }));
+                char_count += 50; // Approximate header length
+            }
+            
+            summary_lines.push(mem_text);
+            char_count += mem_len + 1;
+        }
+        
+        let summary_text = summary_lines.join("\n");
+        
+        // Create and save summary
+        let mut summary = UserSummary::new(user_id, summary_text);
+        summary.memory_count = relevant_memories.len();
+        summary.importance_threshold = config.min_importance;
+        summary.included_types = config.include_types.clone();
+        
+        self.store.save_user_summary(&summary).await?;
+        
+        Ok(summary)
+    }
+
+    /// Get current user summary
+    pub async fn get_summary(&self, user_id: Option<String>) -> Result<Option<UserSummary>> {
+        self.store.get_user_summary(user_id.as_deref()).await
+    }
+
+    /// Get all user summaries
+    pub async fn get_all_summaries(&self) -> Result<Vec<UserSummary>> {
+        self.store.get_all_user_summaries().await
+    }
+
+    /// Delete a user summary
+    pub async fn delete_summary(&self, id: &str) -> Result<bool> {
+        self.store.delete_user_summary(id).await
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // REDUNDANCY DETECTION - Duplicate Prevention
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /// Check for duplicate memories before storing
+    pub async fn check_duplicates(
+        &self,
+        content: &str,
+        config: &RedundancyConfig,
+    ) -> Result<DuplicateCheckResult> {
+        if !config.enabled || !config.check_on_store {
+            return Ok(DuplicateCheckResult {
+                should_store: true,
+                duplicates: vec![],
+                action_taken: config.duplicate_action.clone(),
+                warning: None,
+            });
+        }
+        
+        // Find similar memories
+        let duplicates = self.store
+            .find_similar_memories(content, config.similarity_threshold, 5)
+            .await?;
+        
+        if duplicates.is_empty() {
+            return Ok(DuplicateCheckResult {
+                should_store: true,
+                duplicates: vec![],
+                action_taken: DuplicateAction::Warn,
+                warning: None,
+            });
+        }
+        
+        // Determine action based on config
+        let (should_store, warning) = match config.duplicate_action {
+            DuplicateAction::Warn => (true, Some(format!(
+                "Similar memory already exists ({}% similarity)", 
+                (duplicates[0].similarity * 100.0) as i32
+            ))),
+            DuplicateAction::Reject => (false, Some(format!(
+                "Duplicate detected: {}% similar to existing memory",
+                (duplicates[0].similarity * 100.0) as i32
+            ))),
+            DuplicateAction::Ask => (false, Some("Similar memories found, awaiting decision".to_string())),
+        };
+        
+        Ok(DuplicateCheckResult {
+            should_store,
+            duplicates,
+            action_taken: config.duplicate_action.clone(),
+            warning,
+        })
+    }
+
+    /// Store memory with redundancy check
+    pub async fn remember_with_dedup(
+        &self,
+        memory: &Memory,
+        config: &RedundancyConfig,
+    ) -> Result<DuplicateCheckResult> {
+        // First check for duplicates
+        let check_result = self.check_duplicates(&memory.content, config).await?;
+        
+        // Store if allowed
+        if check_result.should_store {
+            self.remember(memory).await?;
+            
+            // Mark as duplicate if duplicates were found (for Ask mode)
+            if !check_result.duplicates.is_empty() 
+                && config.duplicate_action == DuplicateAction::Ask {
+                // Store the memory but mark it
+                // (Already handled in remember())
+            }
+        }
+        
+        Ok(check_result)
     }
 
     // ─── Episodic Memory ──────────────────────────────────────────────────

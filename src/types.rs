@@ -366,3 +366,140 @@ pub struct CreateAssociationInput {
     pub relation_type: RelationType,
     pub weight: f32,
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ROLLING SUMMARY - User Portrait Feature
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// User summary - a persistent portrait that's always in context
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserSummary {
+    /// Unique identifier
+    pub id: String,
+    /// User this summary belongs to (optional, for backward compat)
+    pub user_id: Option<String>,
+    /// The generated summary text
+    pub summary_text: String,
+    /// When this summary was generated
+    pub generated_at: DateTime<Utc>,
+    /// How many memories were summarized
+    pub memory_count: usize,
+    /// Minimum importance threshold used
+    pub importance_threshold: f32,
+    /// What memory types were included
+    pub included_types: Vec<MemoryType>,
+}
+
+impl UserSummary {
+    pub fn new(user_id: Option<String>, summary_text: String) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            user_id,
+            summary_text,
+            generated_at: Utc::now(),
+            memory_count: 0,
+            importance_threshold: 0.6,
+            included_types: vec![
+                MemoryType::Identity,
+                MemoryType::Preference,
+                MemoryType::Goal,
+                MemoryType::Decision,
+            ],
+        }
+    }
+}
+
+/// Configuration for summary generation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SummaryConfig {
+    /// Maximum characters in summary (default: 500)
+    pub max_length: usize,
+    /// Minimum importance to include (default: 0.6)
+    pub min_importance: f32,
+    /// Which memory types to include
+    pub include_types: Vec<MemoryType>,
+    /// Auto-regenerate on new memories (default: true)
+    pub auto_regenerate: bool,
+    /// N new memories before auto-regenerate (default: 5)
+    pub regenerate_threshold: usize,
+}
+
+impl Default for SummaryConfig {
+    fn default() -> Self {
+        Self {
+            max_length: 500,
+            min_importance: 0.6,
+            include_types: vec![
+                MemoryType::Identity,
+                MemoryType::Preference,
+                MemoryType::Goal,
+                MemoryType::Decision,
+            ],
+            auto_regenerate: true,
+            regenerate_threshold: 5,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REDUNDANCY DETECTION - Duplicate Prevention Feature
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Configuration for redundancy detection
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedundancyConfig {
+    /// Enable duplicate detection (default: true)
+    pub enabled: bool,
+    /// Similarity threshold 0.0-1.0 (default: 0.90)
+    pub similarity_threshold: f32,
+    /// Check on every store (default: true)
+    pub check_on_store: bool,
+    /// Action when duplicate found
+    pub duplicate_action: DuplicateAction,
+}
+
+impl Default for RedundancyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            similarity_threshold: 0.90,
+            check_on_store: true,
+            duplicate_action: DuplicateAction::Warn,
+        }
+    }
+}
+
+/// What to do when duplicate is detected
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum DuplicateAction {
+    /// Store anyway, return warning
+    Warn,
+    /// Don't store, return error
+    Reject,
+    /// Let caller decide (return duplicates, don't store)
+    Ask,
+}
+
+/// Result of duplicate check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateCheckResult {
+    /// Whether to proceed with storing
+    pub should_store: bool,
+    /// Similar memories found
+    pub duplicates: Vec<DuplicateInfo>,
+    /// Action taken
+    pub action_taken: DuplicateAction,
+    /// Warning message if any
+    pub warning: Option<String>,
+}
+
+/// Information about a potential duplicate
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateInfo {
+    /// ID of the existing memory
+    pub memory_id: MemoryId,
+    /// Content of the existing memory
+    pub content: String,
+    /// Similarity score (0.0 - 1.0)
+    pub similarity: f32,
+}
